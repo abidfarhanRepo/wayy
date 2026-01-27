@@ -85,26 +85,28 @@ fun MainNavigationScreen(
         }
     }
 
-    // Simulate location and stats updates (for demo)
+    // DEMO MODE: Simulate location and stats updates
+    // Set viewModel.isDemoMode = false to use real GPS
+    // TODO: Remove this block and use real location updates in production
     LaunchedEffect(Unit) {
-        while (true) {
-            delay(1000)
-            // Demo: Simulate speed, bearing, and location changes
-            val simulatedSpeed = (30..70).random().toFloat()
-            val simulatedBearing = (0..360).random().toFloat()  // Direction in degrees
-            // Slight position variation for demo (Doha, Qatar area)
-            val baseLat = 25.2854
-            val baseLng = 51.5310
-            val offset = (0..100).random().toDouble() / 100000.0
-            viewModel.updateLocation(
-                org.maplibre.geojson.Point.fromLngLat(baseLng + offset, baseLat + offset),
-                simulatedSpeed,
-                simulatedBearing
-            )
-            viewModel.updateSimulatedStats(
-                roadQuality = (80..98).random().toFloat(),
-                gForce = Random.nextDouble(0.5, 2.5).toFloat()
-            )
+        if (viewModel.isDemoMode) {
+            while (true) {
+                delay(2000)  // Slower updates for demo
+                val simulatedSpeed = (30..70).random().toFloat()
+                val simulatedBearing = (0..360).random().toFloat()
+                val baseLat = 25.2854
+                val baseLng = 51.5310
+                val offset = (0..100).random().toDouble() / 100000.0
+                viewModel.updateLocation(
+                    org.maplibre.geojson.Point.fromLngLat(baseLng + offset, baseLat + offset),
+                    simulatedSpeed,
+                    simulatedBearing
+                )
+                viewModel.updateSimulatedStats(
+                    roadQuality = (80..98).random().toFloat(),
+                    gForce = Random.nextDouble(0.5, 2.5).toFloat()
+                )
+            }
         }
     }
 
@@ -179,7 +181,7 @@ fun MainNavigationScreen(
             }
         }
 
-        // Grid overlay for cyberpunk effect
+        // Subtle background gradient
         AnimatedGridBackground(modifier = Modifier.fillMaxSize())
 
         // Top bar
@@ -194,17 +196,17 @@ fun MainNavigationScreen(
         AnimatedVisibility(
             visible = uiState.isNavigating,
             enter = slideInVertically(
-                initialOffsetY = { -it },
+                initialOffsetY = { -it / 2 },
                 animationSpec = androidx.compose.animation.core.spring(
-                    dampingRatio = 0.8f,
-                    stiffness = 400f
+                    dampingRatio = 0.85f,
+                    stiffness = 450f
                 )
             ) + fadeIn(),
             exit = slideOutVertically(
-                targetOffsetY = { -it },
+                targetOffsetY = { -it / 2 },
                 animationSpec = androidx.compose.animation.core.spring(
-                    dampingRatio = 0.8f,
-                    stiffness = 400f
+                    dampingRatio = 0.85f,
+                    stiffness = 450f
                 )
             ) + fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter)
@@ -212,38 +214,39 @@ fun MainNavigationScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 80.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(top = 70.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 NavigationOverlay(
                     direction = uiState.nextDirection,
                     distance = uiState.distanceToTurn,
                     streetName = uiState.currentStreet,
-                    modifier = Modifier.padding(horizontal = 16.dp)
+                    modifier = Modifier.padding(horizontal = 20.dp)
                 )
 
                 ETACard(
                     eta = uiState.eta,
                     remainingDistance = uiState.remainingDistance,
-                    modifier = Modifier.padding(horizontal = 16.dp)
+                    modifier = Modifier.padding(horizontal = 20.dp)
                 )
             }
         }
 
-        // Speedometer (bottom left)
+        // Speedometer (bottom left, compact size)
         Speedometer(
             speed = speed,
+            maxSpeed = 140f,
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 16.dp, bottom = 100.dp)
+                .padding(start = 20.dp, bottom = 90.dp)
         )
 
-        // Stats panel (bottom right, above actions)
+        // Stats panel (bottom right)
         Row(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 100.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(end = 20.dp, bottom = 90.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             RoadQualityCard(
                 quality = "${uiState.roadQuality.toInt()}%"
@@ -253,7 +256,7 @@ fun MainNavigationScreen(
             )
         }
 
-        // Quick actions bar (bottom center)
+        // Quick actions bar (bottom center, cleaner spacing)
         QuickActionsBar(
             isNavigating = uiState.isNavigating,
             isScanning = uiState.isScanning,
@@ -264,7 +267,6 @@ fun MainNavigationScreen(
                     viewModel.stopNavigation()
                 } else {
                     // Demo: Start navigation to a fixed destination in Qatar
-                    // From Doha to The Pearl (a famous area in Qatar)
                     viewModel.startNavigation(
                         org.maplibre.geojson.Point.fromLngLat(51.5450, 25.3774) // The Pearl, Qatar
                     )
@@ -275,7 +277,7 @@ fun MainNavigationScreen(
             on3DViewToggle = { viewModel.toggle3DView() },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 16.dp)
+                .padding(bottom = 20.dp)
         )
 
         // Snackbar host

@@ -44,8 +44,8 @@ fun QuickActionsBar(
     modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         GlassButton(
             onClick = onNavigateToggle,

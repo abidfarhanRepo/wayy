@@ -44,16 +44,16 @@ fun StatCard(
         modifier = modifier
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(36.dp)
                     .background(
                         color = iconColor.copy(alpha = 0.2f),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(8.dp)
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -61,7 +61,7 @@ fun StatCard(
                     imageVector = icon,
                     contentDescription = label,
                     tint = iconColor,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
@@ -71,13 +71,13 @@ fun StatCard(
                 Text(
                     text = value,
                     color = iconColor,
-                    fontSize = 18.sp,
+                    fontSize = 16.sp,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
                 Text(
                     text = label,
                     color = WayyColors.TextSecondary,
-                    fontSize = 11.sp,
+                    fontSize = 10.sp,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
                 )
             }

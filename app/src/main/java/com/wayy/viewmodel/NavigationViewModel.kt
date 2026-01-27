@@ -42,6 +42,9 @@ class NavigationViewModel(
     private val mapManager: MapLibreManager? = null
 ) : ViewModel() {
 
+    // Demo mode flag - set to false for production
+    var isDemoMode: Boolean = true
+
     private val _uiState = MutableStateFlow(NavigationUiState())
     val uiState: StateFlow<NavigationUiState> = _uiState.asStateFlow()
 

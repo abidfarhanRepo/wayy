@@ -100,19 +100,18 @@ fun NavigationOverlay(
     GlassCard(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Direction icon
             Box(
                 modifier = Modifier
-                    .size(56.dp)
+                    .size(50.dp)
                     .clip(CircleShape)
                     .background(
                         color = WayyColors.PrimaryLime.copy(alpha = 0.2f)
@@ -123,26 +122,28 @@ fun NavigationOverlay(
                     imageVector = directionIcon,
                     contentDescription = instructionText,
                     tint = WayyColors.PrimaryLime,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(28.dp)
                 )
             }
 
             // Direction info
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 Text(
                     text = instructionText,
                     color = Color.White,
-                    fontSize = 18.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-                Text(
-                    text = streetName,
-                    color = WayyColors.TextSecondary,
-                    fontSize = 14.sp
-                )
+                if (streetName.isNotEmpty()) {
+                    Text(
+                        text = streetName,
+                        color = WayyColors.TextSecondary,
+                        fontSize = 13.sp
+                    )
+                }
             }
 
             // Distance
@@ -152,7 +153,7 @@ fun NavigationOverlay(
                 Text(
                     text = distance,
                     color = WayyColors.PrimaryLime,
-                    fontSize = 24.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
                 )
             }

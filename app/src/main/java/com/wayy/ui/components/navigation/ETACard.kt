@@ -40,31 +40,31 @@ fun ETACard(
 ) {
     GlassCard(modifier = modifier) {
         Row(
-            modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(20.dp),
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Time section
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.AccessTime,
                     contentDescription = "Time",
                     tint = WayyColors.PrimaryLime,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(20.dp)
                 )
                 Text(
                     text = eta,
                     color = Color.White,
-                    fontSize = 20.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     text = "ETA",
                     color = WayyColors.TextSecondary,
-                    fontSize = 11.sp
+                    fontSize = 10.sp
                 )
             }
 
@@ -72,7 +72,7 @@ fun ETACard(
             androidx.compose.foundation.layout.Box(
                 modifier = Modifier
                     .width(1.dp)
-                    .height(40.dp)
+                    .height(36.dp)
                     .clip(CircleShape)
                     .background(WayyColors.GlassBorder)
             )
@@ -80,24 +80,24 @@ fun ETACard(
             // Distance section
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Route,
                     contentDescription = "Distance",
                     tint = WayyColors.PrimaryCyan,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(20.dp)
                 )
                 Text(
                     text = remainingDistance,
                     color = Color.White,
-                    fontSize = 20.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     text = "Remaining",
                     color = WayyColors.TextSecondary,
-                    fontSize = 11.sp
+                    fontSize = 10.sp
                 )
             }
         }
