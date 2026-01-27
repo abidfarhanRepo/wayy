@@ -1,0 +1,42 @@
+package com.wayy
+
+import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
+import com.wayy.map.MapLibreManager
+
+/**
+ * Main application class for MapPulse Ultimate
+ */
+class WayyApp : Application() {
+
+    override fun onCreate() {
+        super.onCreate()
+
+        // Initialize MapLibre
+        MapLibreManager(this).initialize()
+
+        // Create notification channel for foreground service (future use)
+        createNotificationChannel()
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Navigation Service",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Ongoing navigation notifications"
+            }
+
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    companion object {
+        const val CHANNEL_ID = "navigation_channel"
+    }
+}

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Wayy</string>
+    <string name="navigation">Navigate</string>
+    <string name="scan">Scan</string>
+    <string name="ar_mode">AR</string>
+    <string name="view_3d">3D</string>
+    <string name="road_quality">Road Quality</string>
+    <string name="g_force">G-Force</string>
+    <string name="scanning">Scanning</string>
+    <string name="search_destination">Search destination</string>
+    <string name="current_location">Current Location</string>
+    <string name="permission_required">Location permission is required</string>
+</resources>

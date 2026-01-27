@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(java:*)",
+      "Bash(chmod:*)",
+      "Bash(./gradlew assembleDebug:*)",
+      "Bash(curl:*)",
+      "Bash(adb:*)",
+      "Bash(find:*)",
+      "Bash(docker:*)",
+      "Bash(sudo docker run:*)",
+      "Bash(cat:*)",
+      "Bash(git init:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git remote add origin https://github.com/abidfarhanRepo/wayy.git:*)",
+      "Bash(git push:*)",
+      "Bash(wc:*)",
+      "Bash(grep:*)",
+      "Bash(git show-ref:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(git rm:*)"
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # Android build service
+  android-builder:
+    image: eclipse-temurin:17-jdk
+    container_name: wayy-android-builder
+    working_dir: /project
+    volumes:
+      # Mount the project directory
+      - .:/project
+      # Persist Android SDK cache
+      - android-sdk-cache:/opt/android-sdk
+      # ADB connection for device installation
+      - /dev/bus/usb:/dev/bus/usb
+      # Share ADB keys between host and container
+      - ~/.android:/root/.android
+    environment:
+      - ANDROID_SDK_ROOT=/opt/android-sdk
+      - ANDROID_HOME=/opt/android-sdk
+    privileged: true
+    command: >
+      bash -c "
+        apt-get update -qq &&
+        apt-get install -y -qq wget unzip &&
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip &&
+        mkdir -p /opt/android-sdk/cmdline-tools &&
+        unzip -q commandlinetools-linux-11076708_latest.zip -d /opt/android-sdk/cmdline-tools &&
+        mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest &&
+        export PATH=\$PATH:\$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:\$ANDROID_SDK_ROOT/platform-tools &&
+        echo 'sdk.dir=/opt/android-sdk' > /project/local.properties &&
+        yes | sdkmanager --licenses > /dev/null 2>&1 &&
+        sdkmanager 'platform-tools' 'platforms;android-34' 'build-tools;34.0.0' > /dev/null 2>&1 &&
+        ./gradlew assembleDebug --no-daemon
+      "
+    # Cache SDK for faster rebuilds
+    volumes:
+      - android-sdk-cache:
+
+volumes:
+  android-sdk-cache:
