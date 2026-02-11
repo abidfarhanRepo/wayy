@@ -1,5 +1,6 @@
 package com.wayy.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -83,7 +84,8 @@ fun RouteOverviewScreen(
     viewModel: NavigationViewModel = viewModel(),
     onDestinationSelected: (PlaceResult) -> Unit = {},
     onRecentRouteClick: (RouteHistoryItem) -> Unit = {},
-    onPoiSelected: (LocalPoiItem) -> Unit = {}
+    onPoiSelected: (LocalPoiItem) -> Unit = {},
+    onBack: () -> Unit = {}
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var poiName by remember { mutableStateOf("") }
@@ -119,6 +121,8 @@ fun RouteOverviewScreen(
         filteredPois.map { poi -> PoiDistance(poi, null) }
             .sortedByDescending { it.poi.timestamp }
     }
+
+    BackHandler(onBack = onBack)
 
     LaunchedEffect(searchQuery) {
         val query = searchQuery.trim()

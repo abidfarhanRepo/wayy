@@ -148,6 +148,9 @@ fun AppContent(
                     )
                     currentScreen = AppScreen.Main
                 },
+                onBack = {
+                    currentScreen = AppScreen.Main
+                },
                 onRecentRouteClick = { recentRoute ->
                     navigationViewModel.startNavigation(
                         Point.fromLngLat(recentRoute.endLng, recentRoute.endLat),

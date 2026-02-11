@@ -67,15 +67,17 @@ class MapStyleManager {
     private fun applyEnglishLabels(style: Style) {
         val labelExpression = Expression.coalesce(
             Expression.get("name:en"),
+            Expression.get("name:latin"),
             Expression.get("name"),
             Expression.get("name:ar")
         )
+        val fontStack = arrayOf("noto_sans_regular", "noto_sans_bold")
         style.layers.orEmpty()
             .filterIsInstance<SymbolLayer>()
-            .filter { it.textField != null }
             .forEach { layer ->
                 layer.setProperties(
-                    PropertyFactory.textField(labelExpression)
+                    PropertyFactory.textField(labelExpression),
+                    PropertyFactory.textFont(fontStack)
                 )
             }
     }
