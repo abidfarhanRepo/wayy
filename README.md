@@ -67,6 +67,17 @@ app/src/main/java/com/wayy/
 2. Wait for Gradle sync to complete
 3. Click "Run" or press Shift+F10
 
+## Testing
+
+```bash
+./gradlew test
+./gradlew connectedAndroidTest
+```
+
+## Geocoding
+
+Search uses Nominatim with a Photon fallback when rate-limited (e.g. HTTP 509/429).
+
 ## Permissions
 
 The app requires the following permissions:
