@@ -20,8 +20,8 @@ data class RouteHistoryItem(
     val endLng: Double,
     val startName: String,
     val endName: String,
-    val distanceKm: Double,
-    val durationSeconds: Long,
+    val distanceMeters: Double,
+    val durationSeconds: Double,
     val timestamp: Long,
     val routeGeometry: String? = null
 )

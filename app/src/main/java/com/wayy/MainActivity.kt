@@ -17,13 +17,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import com.wayy.ui.screens.MainNavigationScreen
 import com.wayy.ui.screens.RouteOverviewScreen
 import com.wayy.ui.theme.WayyColors
 import com.wayy.ui.theme.WayyTheme
 import com.wayy.ui.theme.WayyTypography
+import com.wayy.data.repository.RouteHistoryManager
 import com.wayy.viewmodel.NavigationViewModel
 import org.maplibre.geojson.Point
 
@@ -93,7 +97,20 @@ fun AppContent(
     onRequestPermission: () -> Unit
 ) {
     var currentScreen by remember { mutableStateOf<AppScreen>(AppScreen.Main) }
-    val navigationViewModel: NavigationViewModel = viewModel()
+    val context = LocalContext.current
+    val navigationViewModel: NavigationViewModel = viewModel(
+        factory = object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                if (modelClass.isAssignableFrom(NavigationViewModel::class.java)) {
+                    @Suppress("UNCHECKED_CAST")
+                    return NavigationViewModel(
+                        routeHistoryManager = RouteHistoryManager(context)
+                    ) as T
+                }
+                throw IllegalArgumentException("Unknown ViewModel class")
+            }
+        }
+    )
 
     LaunchedEffect(hasPermission) {
         if (!hasPermission) {
@@ -118,12 +135,17 @@ fun AppContent(
                 viewModel = navigationViewModel,
                 onDestinationSelected = { destination ->
                     navigationViewModel.startNavigation(
-                        Point.fromLngLat(destination.lon, destination.lat)
+                        Point.fromLngLat(destination.lon, destination.lat),
+                        destination.display_name
                     )
                     currentScreen = AppScreen.Main
                 },
-                onRecentRouteClick = {
-                    // Navigate to route
+                onRecentRouteClick = { recentRoute ->
+                    navigationViewModel.startNavigation(
+                        Point.fromLngLat(recentRoute.endLng, recentRoute.endLat),
+                        recentRoute.endName
+                    )
+                    currentScreen = AppScreen.Main
                 }
             )
         }

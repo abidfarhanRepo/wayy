@@ -36,9 +36,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.wayy.data.repository.RouteHistoryItem
 import com.wayy.data.repository.PlaceResult
 import com.wayy.ui.components.glass.GlassCard
 import com.wayy.ui.theme.WayyColors
+import com.wayy.navigation.NavigationUtils
 import com.wayy.viewmodel.NavigationViewModel
 import kotlinx.coroutines.delay
 
@@ -49,12 +51,13 @@ import kotlinx.coroutines.delay
 fun RouteOverviewScreen(
     viewModel: NavigationViewModel = viewModel(),
     onDestinationSelected: (PlaceResult) -> Unit = {},
-    onRecentRouteClick: () -> Unit = {}
+    onRecentRouteClick: (RouteHistoryItem) -> Unit = {}
 ) {
     var searchQuery by remember { mutableStateOf("") }
     val searchResults by viewModel.searchResults.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
     val searchError by viewModel.searchError.collectAsState()
+    val recentRoutes = viewModel.recentRoutes?.collectAsState()?.value.orEmpty()
     val showSearchResults = searchQuery.trim().length >= 3
 
     LaunchedEffect(searchQuery) {
@@ -182,12 +185,26 @@ fun RouteOverviewScreen(
                         }
                     }
                 } else {
-                    item {
-                        Text(
-                            text = "No recent routes yet",
-                            color = WayyColors.TextSecondary,
-                            fontSize = 13.sp
-                        )
+                    if (recentRoutes.isEmpty()) {
+                        item {
+                            Text(
+                                text = "No recent routes yet",
+                                color = WayyColors.TextSecondary,
+                                fontSize = 13.sp
+                            )
+                        }
+                    } else {
+                        items(recentRoutes) { route ->
+                            val parts = route.endName.split(",")
+                            val name = parts.firstOrNull()?.trim().orEmpty().ifEmpty { route.endName }
+                            val address = parts.drop(1).joinToString(",").trim()
+                            RecentRouteCard(
+                                name = name,
+                                address = address.ifEmpty { route.startName },
+                                distance = NavigationUtils.formatDistance(route.distanceMeters),
+                                onClick = { onRecentRouteClick(route) }
+                            )
+                        }
                     }
                 }
             }

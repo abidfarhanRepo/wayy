@@ -2,6 +2,8 @@ package com.wayy.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.wayy.data.repository.RouteHistoryItem
+import com.wayy.data.repository.RouteHistoryManager
 import com.wayy.data.model.Route
 import com.wayy.data.repository.PlaceResult
 import com.wayy.data.repository.RouteRepository
@@ -14,6 +16,8 @@ import com.wayy.ui.components.navigation.Direction
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.maplibre.geojson.Point
 
@@ -62,7 +66,8 @@ data class NavigationUiState(
 class NavigationViewModel(
     private val routeRepository: RouteRepository = RouteRepository(),
     private val turnProvider: TurnInstructionProvider = TurnInstructionProvider(),
-    private val rerouteUtils: RerouteUtils = RerouteUtils()
+    private val rerouteUtils: RerouteUtils = RerouteUtils(),
+    private val routeHistoryManager: RouteHistoryManager? = null
 ) : ViewModel() {
 
     var isDemoMode: Boolean = false
@@ -88,7 +93,13 @@ class NavigationViewModel(
     private val _searchError = MutableStateFlow<String?>(null)
     val searchError: StateFlow<String?> = _searchError.asStateFlow()
 
-    fun startNavigation(destination: Point) {
+    val recentRoutes = routeHistoryManager?.recentRoutes?.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList()
+    )
+
+    fun startNavigation(destination: Point, destinationName: String? = null) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 navigationState = NavigationState.Routing,
@@ -111,7 +122,7 @@ class NavigationViewModel(
                     if (result.isSuccess) {
                         val route = result.getOrNull()
                         if (route != null) {
-                            initializeNavigation(route, destination)
+                            initializeNavigation(route, destination, destinationName)
                         } else {
                             _uiState.value = _uiState.value.copy(
                                 navigationState = NavigationState.Idle,
@@ -154,7 +165,8 @@ class NavigationViewModel(
         _searchError.value = null
     }
 
-    private fun initializeNavigation(route: Route, destination: Point) {
+    private fun initializeNavigation(route: Route, destination: Point, destinationName: String?) {
+        val startLocation = _uiState.value.currentLocation
         _destination.value = destination
 
         val firstInstruction = turnProvider.getCurrentInstruction(
@@ -190,6 +202,30 @@ class NavigationViewModel(
         )
 
         rerouteUtils.resetState()
+
+        if (routeHistoryManager != null && startLocation != null) {
+            viewModelScope.launch {
+                val routeId = routeHistoryManager.generateRouteId(
+                    startLat = startLocation.latitude(),
+                    startLng = startLocation.longitude(),
+                    endLat = destination.latitude(),
+                    endLng = destination.longitude()
+                )
+                val item = RouteHistoryItem(
+                    id = routeId,
+                    startLat = startLocation.latitude(),
+                    startLng = startLocation.longitude(),
+                    endLat = destination.latitude(),
+                    endLng = destination.longitude(),
+                    startName = "Current location",
+                    endName = destinationName ?: "Destination",
+                    distanceMeters = route.distance,
+                    durationSeconds = route.duration,
+                    timestamp = System.currentTimeMillis()
+                )
+                routeHistoryManager.addRoute(item)
+            }
+        }
     }
 
     fun stopNavigation() {
