@@ -181,10 +181,10 @@ fun RouteOverviewScreen(
                 )
             }
 
-            if (isSearching) {
-                Spacer(modifier = Modifier.height(32.dp))
-                CircularProgressIndicator(color = WayyColors.PrimaryLime)
-            }
+    if (isSearching && activeTab == RouteOverviewTab.SEARCH) {
+        Spacer(modifier = Modifier.height(32.dp))
+        CircularProgressIndicator(color = WayyColors.PrimaryLime)
+    }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -196,6 +196,11 @@ fun RouteOverviewScreen(
                     selected = activeTab == RouteOverviewTab.SEARCH,
                     onClick = { activeTab = RouteOverviewTab.SEARCH },
                     label = { Text("Search") }
+                )
+                FilterChip(
+                    selected = activeTab == RouteOverviewTab.POIS,
+                    onClick = { activeTab = RouteOverviewTab.POIS },
+                    label = { Text("POIs") }
                 )
                 FilterChip(
                     selected = activeTab == RouteOverviewTab.SETTINGS,
@@ -343,9 +348,73 @@ fun RouteOverviewScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                if (!showSearchResults) {
-                    GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
-                        Column(modifier = Modifier.padding(12.dp)) {
+                searchError?.let { message ->
+                    Text(
+                        text = message,
+                        color = WayyColors.Error,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                }
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (showSearchResults) {
+                        if (!isSearching && searchResults.isEmpty() && searchError == null) {
+                            item {
+                                Text(
+                                    text = "No results found",
+                                    color = WayyColors.TextSecondary,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        } else {
+                            items(searchResults) { place ->
+                                val parts = place.display_name.split(",")
+                                val name = parts.firstOrNull()?.trim().orEmpty().ifEmpty { place.display_name }
+                                val address = parts.drop(1).joinToString(",").trim()
+                                RecentRouteCard(
+                                    name = name,
+                                    address = address.ifEmpty { place.display_name },
+                                    distance = "Select",
+                                    onClick = { onDestinationSelected(place) }
+                                )
+                            }
+                        }
+                    } else {
+                        if (recentRoutes.isEmpty()) {
+                            item {
+                                Text(
+                                    text = "No recent routes yet",
+                                    color = WayyColors.TextSecondary,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        } else {
+                            items(recentRoutes) { route ->
+                                val parts = route.endName.split(",")
+                                val name = parts.firstOrNull()?.trim().orEmpty().ifEmpty { route.endName }
+                                val address = parts.drop(1).joinToString(",").trim()
+                                RecentRouteCard(
+                                    name = name,
+                                    address = address.ifEmpty { route.startName },
+                                    distance = NavigationUtils.formatDistance(route.distanceMeters),
+                                    onClick = { onRecentRouteClick(route) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (activeTab == RouteOverviewTab.POIS) {
+                GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
+                    Column(modifier = Modifier.padding(12.dp)) {
                         OutlinedTextField(
                             value = poiName,
                             onValueChange = { poiName = it },
@@ -389,70 +458,39 @@ fun RouteOverviewScreen(
                             Text("Save POI")
                         }
                     }
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(0.9f),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(poiCategoryFilters) { option ->
-                            FilterChip(
-                                selected = selectedCategory == option.id,
-                                onClick = { selectedCategory = option.id },
-                                label = { Text(option.label) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = option.icon,
-                                        contentDescription = null,
-                                        tint = option.color
-                                    )
-                                }
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
                 }
 
-            searchError?.let { message ->
-                Text(
-                    text = message,
-                    color = WayyColors.Error,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
-            }
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // Recent routes list
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                if (showSearchResults) {
-                    if (!isSearching && searchResults.isEmpty() && searchError == null) {
-                        item {
-                            Text(
-                                text = "No results found",
-                                color = WayyColors.TextSecondary,
-                                fontSize = 13.sp
-                            )
-                        }
-                    } else {
-                        items(searchResults) { place ->
-                            val parts = place.display_name.split(",")
-                            val name = parts.firstOrNull()?.trim().orEmpty().ifEmpty { place.display_name }
-                            val address = parts.drop(1).joinToString(",").trim()
-                            RecentRouteCard(
-                                name = name,
-                                address = address.ifEmpty { place.display_name },
-                                distance = "Select",
-                                onClick = { onDestinationSelected(place) }
-                            )
-                        }
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(0.9f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(poiCategoryFilters) { option ->
+                        FilterChip(
+                            selected = selectedCategory == option.id,
+                            onClick = { selectedCategory = option.id },
+                            label = { Text(option.label) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = option.icon,
+                                    contentDescription = null,
+                                    tint = option.color
+                                )
+                            }
+                        )
                     }
-                } else {
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     if (sortedPois.isEmpty()) {
                         item {
                             Text(
@@ -520,53 +558,7 @@ fun RouteOverviewScreen(
                             )
                         }
                     }
-
-                    item {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth(0.9f)
-                                .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.History,
-                                contentDescription = null,
-                                tint = WayyColors.PrimaryLime
-                            )
-                            Text(
-                                text = "Recent Routes",
-                                color = WayyColors.TextSecondary,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-
-                    if (recentRoutes.isEmpty()) {
-                        item {
-                            Text(
-                                text = "No recent routes yet",
-                                color = WayyColors.TextSecondary,
-                                fontSize = 13.sp
-                            )
-                        }
-                    } else {
-                        items(recentRoutes) { route ->
-                            val parts = route.endName.split(",")
-                            val name = parts.firstOrNull()?.trim().orEmpty().ifEmpty { route.endName }
-                            val address = parts.drop(1).joinToString(",").trim()
-                            RecentRouteCard(
-                                name = name,
-                                address = address.ifEmpty { route.startName },
-                                distance = NavigationUtils.formatDistance(route.distanceMeters),
-                                onClick = { onRecentRouteClick(route) }
-                            )
-                        }
-                    }
                 }
-            }
             }
         }
 
@@ -657,6 +649,7 @@ private data class PoiDistance(
 
 private enum class RouteOverviewTab {
     SEARCH,
+    POIS,
     SETTINGS
 }
 
