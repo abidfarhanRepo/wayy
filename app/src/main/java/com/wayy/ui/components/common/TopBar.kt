@@ -28,6 +28,7 @@ import com.wayy.ui.theme.WayyColors
  * @param onMenuClick Callback for menu button
  * @param onSettingsClick Callback for settings button
  * @param isScanningActive Whether scanning is currently active
+ * @param showSettings Whether to show settings button
  * @param modifier Modifier for the bar
  */
 @Composable
@@ -35,6 +36,7 @@ fun TopBar(
     onMenuClick: () -> Unit,
     onSettingsClick: () -> Unit,
     isScanningActive: Boolean = false,
+    showSettings: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -70,11 +72,13 @@ fun TopBar(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        GlassIconButton(
-            onClick = onSettingsClick,
-            icon = Icons.Default.Settings,
-            contentDescription = "Settings"
-        )
+        if (showSettings) {
+            GlassIconButton(
+                onClick = onSettingsClick,
+                icon = Icons.Default.Settings,
+                contentDescription = "Settings"
+            )
+        }
     }
 }
 

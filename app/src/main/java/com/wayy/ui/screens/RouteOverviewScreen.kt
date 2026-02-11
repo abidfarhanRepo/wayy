@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.DismissDirection
 import androidx.compose.material.DismissValue
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.SwipeToDismiss
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.rememberDismissState
@@ -65,7 +66,7 @@ import org.maplibre.geojson.Point
 /**
  * Route overview screen for searching and selecting destinations
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
 @Composable
 fun RouteOverviewScreen(
     viewModel: NavigationViewModel = viewModel(),

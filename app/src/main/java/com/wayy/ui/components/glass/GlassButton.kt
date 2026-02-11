@@ -54,18 +54,12 @@ fun GlassButton(
         onClick = onClick,
         modifier = modifier.scale(scale),
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (active)
-                activeColor.copy(alpha = 0.3f)
-            else
-                WayyColors.GlassLight,
-            contentColor = if (active) activeColor else Color.White
+            containerColor = if (active) activeColor else WayyColors.BgSecondary,
+            contentColor = Color.White
         ),
         border = BorderStroke(
             width = 1.dp,
-            color = if (active)
-                activeColor.copy(alpha = 0.5f)
-            else
-                WayyColors.GlassBorder
+            color = if (active) activeColor else WayyColors.BgTertiary
         ),
         shape = RoundedCornerShape(24.dp),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)

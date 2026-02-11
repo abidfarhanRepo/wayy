@@ -37,6 +37,14 @@ sealed class NavigationState {
     object Arrived : NavigationState()
 }
 
+enum class ActivationReason {
+    APPROACHING_EXIT,
+    APPROACHING_JUNCTION,
+    APPROACHING_TURN,
+    USER_MANUAL,
+    APPROACHING_FORK
+}
+
 data class NavigationUiState(
     val navigationState: NavigationState = NavigationState.Idle,
     val isNavigating: Boolean = false,
@@ -44,6 +52,10 @@ data class NavigationUiState(
     val isARMode: Boolean = false,
     val is3DView: Boolean = false,
     val isCameraFollowing: Boolean = true,
+    val isAROverlayActive: Boolean = false,
+    val deviceBearing: Float = 0f,
+    val arActivationReason: ActivationReason? = null,
+    val turnBearing: Float = 0f,
     val currentRoute: Route? = null,
     val currentLocation: Point? = null,
     val currentBearing: Float = 0f,
@@ -392,6 +404,8 @@ class NavigationViewModel(
         _uiState.value = _uiState.value.copy(
             navigationState = NavigationState.Idle,
             isNavigating = false,
+            isAROverlayActive = false,
+            arActivationReason = null,
             currentRoute = null,
             currentStepIndex = 0,
             nextDirection = Direction.STRAIGHT,
@@ -418,8 +432,12 @@ class NavigationViewModel(
     }
 
     fun toggleARMode() {
+        val newValue = !_uiState.value.isARMode
+        val activationReason = _uiState.value.arActivationReason
         _uiState.value = _uiState.value.copy(
-            isARMode = !_uiState.value.isARMode
+            isARMode = newValue,
+            isAROverlayActive = newValue || activationReason != null,
+            arActivationReason = if (newValue) ActivationReason.USER_MANUAL else activationReason
         )
     }
 
@@ -437,6 +455,10 @@ class NavigationViewModel(
 
     fun setSpeedLimit(limitMph: Int) {
         _uiState.value = _uiState.value.copy(speedLimitMph = limitMph)
+    }
+
+    fun updateDeviceBearing(bearing: Float) {
+        _uiState.value = _uiState.value.copy(deviceBearing = bearing)
     }
 
     fun updateLocation(
@@ -507,6 +529,10 @@ class NavigationViewModel(
 
         val currentInstruction = turnProvider.getCurrentInstruction(location, route, newStepIndex)
         val nextInstruction = turnProvider.getNextInstruction(route, newStepIndex)
+        val currentStep = route.legs.firstOrNull()?.steps?.getOrNull(newStepIndex)
+        val maneuverType = currentStep?.maneuver?.type?.lowercase().orEmpty()
+        val distanceToTurn = currentInstruction?.distanceMeters ?: Double.MAX_VALUE
+        val activationReason = determineActivationReason(maneuverType, distanceToTurn)
 
         refreshTrafficStatsIfNeeded(currentInstruction?.streetName.orEmpty())
         refreshTrafficHistoryIfNeeded(currentInstruction?.streetName.orEmpty())
@@ -537,7 +563,10 @@ class NavigationViewModel(
             remainingDistanceMeters = remainingMeters,
             remainingDistance = NavigationUtils.formatDistance(remainingMeters),
             isApproachingTurn = (currentInstruction?.distanceMeters ?: 0.0) < 200,
-            eta = NavigationUtils.formatDuration(etaSeconds)
+            eta = NavigationUtils.formatDuration(etaSeconds),
+            arActivationReason = activationReason,
+            isAROverlayActive = _uiState.value.isARMode || activationReason != null,
+            turnBearing = currentStep?.maneuver?.bearingAfter?.toFloat() ?: 0f
         )
     }
 
@@ -646,11 +675,29 @@ class NavigationViewModel(
         }
     }
 
+    private fun determineActivationReason(
+        maneuverType: String,
+        distanceToTurn: Double
+    ): ActivationReason? {
+        if (distanceToTurn.isNaN() || distanceToTurn.isInfinite()) return null
+        return when {
+            maneuverType == "off ramp" && distanceToTurn < 500 -> ActivationReason.APPROACHING_EXIT
+            maneuverType == "fork" && distanceToTurn < 300 -> ActivationReason.APPROACHING_FORK
+            maneuverType == "roundabout" && distanceToTurn < 200 -> ActivationReason.APPROACHING_JUNCTION
+            maneuverType == "roundabout turn" && distanceToTurn < 200 -> ActivationReason.APPROACHING_JUNCTION
+            maneuverType == "merge" && distanceToTurn < 300 -> ActivationReason.APPROACHING_JUNCTION
+            distanceToTurn < 200 -> ActivationReason.APPROACHING_TURN
+            else -> null
+        }
+    }
+
     private fun handleArrival(location: Point) {
         finalizeTrip(location)
         _uiState.value = _uiState.value.copy(
             navigationState = NavigationState.Arrived,
             isNavigating = false,
+            isAROverlayActive = false,
+            arActivationReason = null,
             nextDirection = Direction.STRAIGHT,
             distanceToTurn = "",
             currentStreet = "Destination",

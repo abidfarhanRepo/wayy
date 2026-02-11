@@ -31,6 +31,7 @@ app/src/main/java/com/wayy/
 │   │   ├── glass/              # GlassButton, GlassCard
 │   │   ├── gauges/             # Speedometer
 │   │   ├── navigation/         # NavigationOverlay, ETACard
+│   │   ├── camera/             # AR PiP camera overlay components
 │   │   └── common/             # TopBar, StatCard, QuickActionsBar
 │   └── screens/                # MainNavigationScreen, RouteOverviewScreen
 ├── viewmodel/                  # NavigationViewModel
@@ -38,7 +39,7 @@ app/src/main/java/com/wayy/
 │   ├── model/                  # Route data models
 │   ├── repository/             # RouteRepository + DataStore managers
 │   ├── local/                  # Room trip logging (GPS + street segments)
-│   └── sensor/                 # LocationManager
+│   └── sensor/                 # LocationManager + DeviceOrientationManager
 └── map/
     ├── MapLibreManager         # Map operations
     ├── MapStyleManager         # Dark theme styling
@@ -115,11 +116,15 @@ The app requires the following permissions:
 - **POI marker interactions** (tap to view, long-press to add, swipe to delete)
 - **Traffic report improvements** (severity selection, pulse markers, expiry)
 - **Route traffic badge** (severity overlay on route line)
+- **AR PiP camera overlay** (turn arrow + lane guidance card)
+- **Turn banner metrics** (ETA/remaining/speed/traffic/report summary in top bar)
+- **Bottom quick actions visibility** (opaque buttons for map readability)
 
 ## Current MVP Status (Pending)
 
 - **Traffic intensity validation** + tuning
 - **On-device validation** (POIs, traffic, ETA stability)
+- **AR overlay validation** (camera permission + performance)
 - **Offline maps** and additional traffic/POI enhancements
 
 ## Future Enhancements

@@ -7,6 +7,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -17,8 +19,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -61,15 +65,18 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import android.util.Log
 import androidx.compose.runtime.rememberUpdatedState
 import com.wayy.data.sensor.LocationManager
+import com.wayy.data.sensor.DeviceOrientationManager
 import com.wayy.data.repository.LocalPoiItem
 import com.wayy.map.MapLibreManager
 import com.wayy.map.MapViewAutoLifecycle
 import com.wayy.map.MapStyleManager
 import com.wayy.map.WazeStyleManager
 import com.wayy.navigation.NavigationUtils
+import com.wayy.ui.components.camera.CameraPreviewCard
+import com.wayy.ui.components.camera.LaneConfig
+import com.wayy.ui.components.common.QuickActionsBar
 import com.wayy.ui.components.common.TopBar
 import com.wayy.ui.components.glass.GlassIconButton
-import com.wayy.ui.components.navigation.ETACard
 import com.wayy.ui.components.navigation.TurnBanner
 import com.wayy.ui.theme.WayyColors
 import com.wayy.viewmodel.NavigationState
@@ -105,12 +112,14 @@ fun MainNavigationScreen(
     val mapStyleManager = remember { MapStyleManager() }
     val wazeStyleManager = remember { WazeStyleManager() }
     val locationManager = remember { LocationManager(context) }
+    val orientationManager = remember { DeviceOrientationManager(context) }
     val localPois = viewModel.localPois?.collectAsState()?.value.orEmpty()
     val trafficReports = viewModel.trafficReports?.collectAsState()?.value.orEmpty()
     val trafficSegments = viewModel.trafficSegments.collectAsState().value
     val trafficSpeedMps by viewModel.trafficSpeedMps.collectAsState()
     val trafficHistory = viewModel.trafficHistory.collectAsState().value
     val latestPois = rememberUpdatedState(localPois)
+    val deviceBearing by orientationManager.currentBearing.collectAsState()
 
     fun resolveTrafficSeverity(speedMps: Double?): String {
         val speed = speedMps ?: return "moderate"
@@ -137,11 +146,24 @@ fun MainNavigationScreen(
         )
     }
 
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         hasLocationPermission = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasCameraPermission = granted
     }
 
     LaunchedEffect(Unit) {
@@ -183,6 +205,27 @@ fun MainNavigationScreen(
                     LatLng(location.latitude(), location.longitude())
                 )
             }
+        }
+    }
+
+    LaunchedEffect(uiState.isAROverlayActive) {
+        if (uiState.isAROverlayActive && uiState.isNavigating && !hasCameraPermission) {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    LaunchedEffect(deviceBearing) {
+        viewModel.updateDeviceBearing(deviceBearing)
+    }
+
+    DisposableEffect(uiState.isAROverlayActive, uiState.isNavigating) {
+        if (uiState.isAROverlayActive && uiState.isNavigating) {
+            orientationManager.start()
+        } else {
+            orientationManager.stop()
+        }
+        onDispose {
+            orientationManager.stop()
         }
     }
 
@@ -309,7 +352,7 @@ fun MainNavigationScreen(
                         addStringProperty("category", poi.category.lowercase())
                     }
                 }
-                source.setGeoJson(FeatureCollection.fromFeatures(features))
+                source.setGeoJson(FeatureCollection.fromFeatures(features.toTypedArray()))
             }
         }
 
@@ -328,7 +371,7 @@ fun MainNavigationScreen(
                         addStringProperty("severity", severity)
                     }
                 }
-                source.setGeoJson(FeatureCollection.fromFeatures(features))
+                source.setGeoJson(FeatureCollection.fromFeatures(features.toTypedArray()))
             }
         }
 
@@ -354,7 +397,7 @@ fun MainNavigationScreen(
             )?.let { source ->
                 val features = trafficSegments.map { segment ->
                     val line = LineString.fromLngLats(
-                        listOf(
+                        listOf<Point>(
                             Point.fromLngLat(segment.startLng, segment.startLat),
                             Point.fromLngLat(segment.endLng, segment.endLat)
                         )
@@ -363,7 +406,7 @@ fun MainNavigationScreen(
                         addStringProperty("severity", segment.severity)
                     }
                 }
-                source.setGeoJson(FeatureCollection.fromFeatures(features))
+                source.setGeoJson(FeatureCollection.fromFeatures(features.toTypedArray()))
             }
         }
 
@@ -376,7 +419,7 @@ fun MainNavigationScreen(
                 runCatching { style.removeSource(MapStyleManager.ROUTE_SOURCE_ID) }
 
                 val route = uiState.currentRoute ?: return@let
-                val coordinates = route.geometry.map { point ->
+                val coordinates = route.geometry.map { point: Point ->
                     Point.fromLngLat(point.longitude(), point.latitude())
                 }
                 val lineString = LineString.fromLngLats(coordinates)
@@ -389,7 +432,7 @@ fun MainNavigationScreen(
                 mapStyleManager.addRouteTrafficLayer(map, MapStyleManager.ROUTE_SOURCE_ID)
 
                 val boundsBuilder = LatLngBounds.Builder()
-                route.geometry.forEach { point ->
+                route.geometry.forEach { point: Point ->
                     boundsBuilder.include(LatLng(point.latitude(), point.longitude()))
                 }
                 mapManager.fitToBounds(boundsBuilder.build())
@@ -401,7 +444,7 @@ fun MainNavigationScreen(
             mapManager.getMapLibreMap()?.style?.getSourceAs<GeoJsonSource>(
                 MapStyleManager.ROUTE_SOURCE_ID
             )?.let { source ->
-                val coordinates = route.geometry.map { point ->
+                val coordinates = route.geometry.map { point: Point ->
                     Point.fromLngLat(point.longitude(), point.latitude())
                 }
                 val lineString = LineString.fromLngLats(coordinates)
@@ -412,12 +455,39 @@ fun MainNavigationScreen(
             }
         }
 
-        TopBar(
-            onMenuClick = onMenuClick,
-            onSettingsClick = onSettingsClick,
-            isScanningActive = false,
-            modifier = Modifier.align(Alignment.TopCenter)
-        )
+        if (!uiState.isNavigating) {
+            TopBar(
+                onMenuClick = onMenuClick,
+                onSettingsClick = onSettingsClick,
+                isScanningActive = false,
+                showSettings = false,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+        }
+
+        val laneConfigs = remember(uiState.nextDirection) {
+            buildLaneConfigs(uiState.nextDirection)
+        }
+
+        AnimatedVisibility(
+            visible = uiState.isAROverlayActive && uiState.isNavigating,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .navigationBarsPadding()
+                .padding(16.dp),
+            enter = slideInVertically(initialOffsetY = { it }) + scaleIn() + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + scaleOut() + fadeOut()
+        ) {
+            CameraPreviewCard(
+                direction = uiState.nextDirection,
+                distanceToTurnMeters = uiState.distanceToTurnMeters,
+                deviceBearing = uiState.deviceBearing,
+                turnBearing = uiState.turnBearing,
+                isApproaching = uiState.isApproachingTurn,
+                lanes = laneConfigs,
+                hasCameraPermission = hasCameraPermission
+            )
+        }
 
         selectedPoi?.let { poi ->
             val distanceText = uiState.currentLocation?.let { location ->
@@ -431,6 +501,7 @@ fun MainNavigationScreen(
             Card(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 90.dp),
                 colors = CardDefaults.cardColors(containerColor = WayyColors.BgSecondary)
             ) {
@@ -484,49 +555,24 @@ fun MainNavigationScreen(
         }
 
         if (uiState.isNavigating) {
-            val trafficAvgMph = trafficSpeedMps?.let { it * 2.23694 }
-            val currentStreet = uiState.currentStreet.ifBlank { "Unknown" }
-            val reportCount = trafficReports.count { report ->
-                report.streetName?.equals(currentStreet, ignoreCase = true) == true
-            }
             val historyBars = buildTrafficHistoryBars(trafficHistory)
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 80.dp, end = 16.dp)
-                    .background(
-                        color = WayyColors.BgSecondary.copy(alpha = 0.9f),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    .padding(12.dp)
-            ) {
-                Text(text = "Traffic", color = Color.White)
-                Text(text = "Street: $currentStreet", color = Color.White)
-                Text(
-                    text = "Current: ${
-                        String.format(Locale.US, "%.0f mph", uiState.currentSpeed)
-                    }",
-                    color = Color.White
-                )
-                Text(
-                    text = "Avg: ${
-                        trafficAvgMph?.let {
-                            String.format(Locale.US, "%.0f mph", it)
-                        } ?: "n/a"
-                    }",
-                    color = Color.White
-                )
-                Text(
-                    text = "Reports: $reportCount",
-                    color = Color.White
-                )
-                if (historyBars.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
+            if (historyBars.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 210.dp, end = 16.dp)
+                        .background(
+                            color = WayyColors.BgSecondary.copy(alpha = 0.9f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .padding(12.dp)
+                ) {
                     Text(
-                        text = "History (24h)",
+                        text = "Traffic history (24h)",
                         color = WayyColors.TextSecondary,
                         fontSize = 12.sp
                     )
+                    Spacer(modifier = Modifier.height(8.dp))
                     TrafficHistoryChart(historyBars)
                 }
             }
@@ -638,12 +684,36 @@ fun MainNavigationScreen(
             exit = slideOutVertically(
                 targetOffsetY = { -it / 2 }
             ) + fadeOut(),
-            modifier = Modifier.align(Alignment.TopCenter)
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 6.dp)
         ) {
+            val currentStreet = uiState.currentStreet.ifBlank { "Unknown" }
+            val reportCount = trafficReports.count { report ->
+                report.streetName?.equals(currentStreet, ignoreCase = true) == true
+            }
+            val speedText = String.format(Locale.US, "%.0f mph", uiState.currentSpeed)
+            val trafficAvgMphText = trafficSpeedMps?.let { speed ->
+                String.format(Locale.US, "%.0f mph", speed * 2.23694)
+            }
+            val trafficSeverity = resolveTrafficSeverity(trafficSpeedMps)
+                .replaceFirstChar { it.titlecase(Locale.US) }
+            val trafficLabel = trafficAvgMphText?.let {
+                "Traffic $trafficSeverity $it"
+            } ?: "Traffic $trafficSeverity"
+            val metricsText = listOfNotNull(
+                uiState.eta.takeIf { it.isNotBlank() }?.let { "ETA $it" },
+                uiState.remainingDistance.takeIf { it.isNotBlank() }?.let { "Remain $it" },
+                "Speed $speedText",
+                trafficLabel,
+                "Reports $reportCount"
+            ).joinToString(" • ")
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 70.dp),
+                    .padding(top = 4.dp),
                 verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)
             ) {
                 if (uiState.navigationState is NavigationState.Arrived) {
@@ -652,6 +722,7 @@ fun MainNavigationScreen(
                         distanceText = "",
                         streetName = "You have arrived",
                         instruction = "",
+                        metricsText = metricsText,
                         isApproaching = false,
                         modifier = Modifier.padding(horizontal = 20.dp)
                     )
@@ -659,18 +730,13 @@ fun MainNavigationScreen(
                     TurnBanner(
                         direction = uiState.nextDirection,
                         distanceText = uiState.distanceToTurn,
-                        streetName = uiState.currentStreet,
+                        streetName = currentStreet,
                         instruction = uiState.currentInstruction,
+                        metricsText = metricsText,
                         isApproaching = uiState.isApproachingTurn,
                         modifier = Modifier.padding(horizontal = 20.dp)
                     )
                 }
-
-                ETACard(
-                    eta = uiState.eta,
-                    remainingDistance = uiState.remainingDistance,
-                    modifier = Modifier.padding(horizontal = 20.dp)
-                )
             }
         }
 
@@ -687,13 +753,29 @@ fun MainNavigationScreen(
             )
         }
 
+        QuickActionsBar(
+            isNavigating = uiState.isNavigating,
+            isScanning = uiState.isScanning,
+            isARActive = uiState.isARMode,
+            is3DActive = uiState.is3DView,
+            onNavigateToggle = { viewModel.toggleNavigation() },
+            onScanToggle = { viewModel.toggleScanning() },
+            onARModeToggle = { viewModel.toggleARMode() },
+            on3DViewToggle = { viewModel.toggle3DView() },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp)
+        )
+
         GlassIconButton(
             onClick = { showTrafficDialog = true },
             icon = Icons.Default.ReportProblem,
             contentDescription = "Report traffic",
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 20.dp, bottom = 20.dp)
+                .navigationBarsPadding()
+                .padding(end = 20.dp, bottom = 16.dp)
                 .size(48.dp)
         )
     }
@@ -741,6 +823,41 @@ private fun buildTrafficHistoryBars(
         if (speeds.isNotEmpty()) speeds.average() else 0.0
     }
     return buckets
+}
+
+private fun buildLaneConfigs(direction: com.wayy.ui.components.navigation.Direction): List<LaneConfig> {
+    return when (direction) {
+        com.wayy.ui.components.navigation.Direction.LEFT ->
+            listOf(
+                LaneConfig("left", true),
+                LaneConfig("center", false),
+                LaneConfig("right", false)
+            )
+        com.wayy.ui.components.navigation.Direction.RIGHT ->
+            listOf(
+                LaneConfig("left", false),
+                LaneConfig("center", false),
+                LaneConfig("right", true)
+            )
+        com.wayy.ui.components.navigation.Direction.SLIGHT_LEFT ->
+            listOf(
+                LaneConfig("left", true),
+                LaneConfig("center", true),
+                LaneConfig("right", false)
+            )
+        com.wayy.ui.components.navigation.Direction.SLIGHT_RIGHT ->
+            listOf(
+                LaneConfig("left", false),
+                LaneConfig("center", true),
+                LaneConfig("right", true)
+            )
+        else ->
+            listOf(
+                LaneConfig("left", false),
+                LaneConfig("center", true),
+                LaneConfig("right", false)
+            )
+    }
 }
 
 private fun poiCategoryLabel(category: String): String {

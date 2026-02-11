@@ -30,6 +30,7 @@ fun TurnBanner(
     distanceText: String,
     streetName: String,
     instruction: String,
+    metricsText: String = "",
     isApproaching: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -121,6 +122,16 @@ fun TurnBanner(
                         color = if (isApproaching) textColor.copy(alpha = 0.7f) else WayyColors.TextSecondary,
                         fontSize = 15.sp,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                if (metricsText.isNotBlank()) {
+                    Text(
+                        text = metricsText,
+                        color = if (isApproaching) textColor.copy(alpha = 0.7f) else WayyColors.TextSecondary,
+                        fontSize = 12.sp,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
