@@ -28,6 +28,7 @@ fun CameraPreviewCard(
     isApproaching: Boolean,
     lanes: List<LaneConfig>,
     hasCameraPermission: Boolean,
+    onVideoCaptureReady: ((androidx.camera.video.VideoCapture<androidx.camera.video.Recorder>) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     GlassCardElevated(
@@ -37,7 +38,8 @@ fun CameraPreviewCard(
         Box(modifier = Modifier.fillMaxSize()) {
             if (hasCameraPermission) {
                 CameraPreviewSurface(
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    onVideoCaptureReady = onVideoCaptureReady
                 )
             } else {
                 Column(

@@ -32,6 +32,7 @@ import com.wayy.data.repository.LocalPoiManager
 import com.wayy.data.repository.RouteHistoryManager
 import com.wayy.data.repository.TrafficReportManager
 import com.wayy.viewmodel.NavigationViewModel
+import com.wayy.debug.DiagnosticLogger
 import org.maplibre.geojson.Point
 
 /**
@@ -110,7 +111,8 @@ fun AppContent(
                         routeHistoryManager = RouteHistoryManager(context),
                         localPoiManager = LocalPoiManager(context),
                         trafficReportManager = TrafficReportManager(context),
-                        tripLoggingManager = TripLoggingManager(context)
+                        tripLoggingManager = TripLoggingManager(context),
+                        diagnosticLogger = DiagnosticLogger(context)
                     ) as T
                 }
                 throw IllegalArgumentException("Unknown ViewModel class")

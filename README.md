@@ -74,6 +74,30 @@ app/src/main/java/com/wayy/
 ./gradlew connectedAndroidTest
 ```
 
+## AR Modes & Capture
+
+Wayy supports three AR modes: `DISABLED`, `PIP_OVERLAY`, and `FULL_AR`.
+`FULL_AR` uses ARCore when available and falls back to a full-screen camera overlay when unsupported.
+
+Navigation capture stores video clips and metadata locally (2 GB cap) while AR mode is active at:
+
+```
+/data/data/com.wayy/files/capture
+```
+
+Diagnostics logs are written to:
+
+```
+/data/data/com.wayy/files/diagnostics
+```
+
+Example export (USB debugging required):
+
+```bash
+adb pull /data/data/com.wayy/files/capture ./capture
+adb pull /data/data/com.wayy/files/diagnostics ./diagnostics
+```
+
 ## Geocoding
 
 Search uses Nominatim with a Photon fallback when rate-limited (e.g. HTTP 509/429).

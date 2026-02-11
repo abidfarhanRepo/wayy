@@ -19,6 +19,9 @@ import com.wayy.navigation.RerouteUtils
 import com.wayy.navigation.TurnInstruction
 import com.wayy.navigation.TurnInstructionProvider
 import com.wayy.ui.components.navigation.Direction
+import com.wayy.ar.ARCapability
+import com.wayy.ar.ARCapabilityStatus
+import com.wayy.debug.DiagnosticLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,16 +48,25 @@ enum class ActivationReason {
     APPROACHING_FORK
 }
 
+enum class ARMode {
+    DISABLED,
+    PIP_OVERLAY,
+    FULL_AR
+}
+
 data class NavigationUiState(
     val navigationState: NavigationState = NavigationState.Idle,
     val isNavigating: Boolean = false,
     val isScanning: Boolean = false,
     val isARMode: Boolean = false,
+    val arMode: ARMode = ARMode.DISABLED,
     val is3DView: Boolean = false,
     val isCameraFollowing: Boolean = true,
     val isAROverlayActive: Boolean = false,
     val deviceBearing: Float = 0f,
     val arActivationReason: ActivationReason? = null,
+    val arCapability: ARCapability = ARCapability.CAMERA_FALLBACK,
+    val arFallbackReason: String? = null,
     val turnBearing: Float = 0f,
     val currentRoute: Route? = null,
     val currentLocation: Point? = null,
@@ -79,7 +91,8 @@ data class NavigationUiState(
     val error: String? = null,
     val isOffRoute: Boolean = false,
     val isApproachingTurn: Boolean = false,
-    val lastAnnouncedDistance: Double? = null
+    val lastAnnouncedDistance: Double? = null,
+    val isCaptureEnabled: Boolean = true
 )
 
 class NavigationViewModel(
@@ -89,7 +102,8 @@ class NavigationViewModel(
     private val routeHistoryManager: RouteHistoryManager? = null,
     private val localPoiManager: LocalPoiManager? = null,
     private val trafficReportManager: TrafficReportManager? = null,
-    private val tripLoggingManager: TripLoggingManager? = null
+    private val tripLoggingManager: TripLoggingManager? = null,
+    private val diagnosticLogger: DiagnosticLogger? = null
 ) : ViewModel() {
 
     var isDemoMode: Boolean = false
@@ -100,6 +114,7 @@ class NavigationViewModel(
     private var lastTrafficSegmentsRefreshTime: Long = 0L
     private var lastTrafficHistoryKey: String? = null
     private var lastTrafficHistoryRefreshTime: Long = 0L
+    private var lastLocationLogTime: Long = 0L
 
     private val trafficRefreshIntervalMs = 10_000L
     private val trafficHistoryRefreshIntervalMs = 60_000L
@@ -193,6 +208,12 @@ class NavigationViewModel(
                 )
                 return@launch
             }
+
+            diagnosticLogger?.log(
+                tag = "WayyNav",
+                message = "Start navigation",
+                data = mapOf("destination" to destinationName)
+            )
 
             when (val result = routeRepository.getRoute(currentLoc, destination)) {
                 is kotlin.Result -> {
@@ -400,6 +421,7 @@ class NavigationViewModel(
         finalizeTrip(_uiState.value.currentLocation)
         _destination.value = null
         rerouteUtils.resetState()
+        diagnosticLogger?.log(tag = "WayyNav", message = "Stop navigation")
 
         _uiState.value = _uiState.value.copy(
             navigationState = NavigationState.Idle,
@@ -432,12 +454,58 @@ class NavigationViewModel(
     }
 
     fun toggleARMode() {
-        val newValue = !_uiState.value.isARMode
-        val activationReason = _uiState.value.arActivationReason
-        _uiState.value = _uiState.value.copy(
-            isARMode = newValue,
-            isAROverlayActive = newValue || activationReason != null,
-            arActivationReason = if (newValue) ActivationReason.USER_MANUAL else activationReason
+        val nextMode = when (_uiState.value.arMode) {
+            ARMode.DISABLED -> ARMode.PIP_OVERLAY
+            ARMode.PIP_OVERLAY -> ARMode.FULL_AR
+            ARMode.FULL_AR -> ARMode.DISABLED
+        }
+        setArMode(nextMode, ActivationReason.USER_MANUAL)
+    }
+
+    fun setArMode(mode: ARMode, reason: ActivationReason? = null) {
+        val current = _uiState.value
+        val capability = current.arCapability
+        val canFullAr = capability == ARCapability.ARCORE || capability == ARCapability.HUAWEI_AR
+        val resolvedMode = if (mode == ARMode.FULL_AR && !canFullAr) ARMode.PIP_OVERLAY else mode
+        val fallbackReason = if (mode == ARMode.FULL_AR && !canFullAr) {
+            "AR runtime unavailable"
+        } else {
+            null
+        }
+        val arActive = resolvedMode != ARMode.DISABLED
+        _uiState.value = current.copy(
+            arMode = resolvedMode,
+            isARMode = arActive,
+            isAROverlayActive = arActive,
+            arActivationReason = if (reason != null && arActive) reason else current.arActivationReason,
+            arFallbackReason = fallbackReason
+        )
+        diagnosticLogger?.log(
+            tag = "WayyAR",
+            message = "AR mode changed",
+            data = mapOf("mode" to resolvedMode.name, "fallback" to fallbackReason)
+        )
+    }
+
+    fun updateArCapability(status: ARCapabilityStatus) {
+        val current = _uiState.value
+        val canFullAr = status.capability == ARCapability.ARCORE || status.capability == ARCapability.HUAWEI_AR
+        val resolvedMode = if (current.arMode == ARMode.FULL_AR && !canFullAr) {
+            ARMode.PIP_OVERLAY
+        } else {
+            current.arMode
+        }
+        _uiState.value = current.copy(
+            arCapability = status.capability,
+            arMode = resolvedMode,
+            isARMode = resolvedMode != ARMode.DISABLED,
+            isAROverlayActive = resolvedMode != ARMode.DISABLED,
+            arFallbackReason = if (resolvedMode != current.arMode) status.message else current.arFallbackReason
+        )
+        diagnosticLogger?.log(
+            tag = "WayyAR",
+            message = "AR capability updated",
+            data = mapOf("capability" to status.capability.name, "message" to status.message)
         )
     }
 
@@ -474,6 +542,8 @@ class NavigationViewModel(
         )
         _speed.value = speed
         _bearing.value = bearing
+
+        logLocationIfNeeded(location, speed, bearing, accuracy)
 
         if (_uiState.value.isNavigating) {
             updateNavigationProgress(location, speed)
@@ -565,7 +635,7 @@ class NavigationViewModel(
             isApproachingTurn = (currentInstruction?.distanceMeters ?: 0.0) < 200,
             eta = NavigationUtils.formatDuration(etaSeconds),
             arActivationReason = activationReason,
-            isAROverlayActive = _uiState.value.isARMode || activationReason != null,
+            isAROverlayActive = _uiState.value.arMode != ARMode.DISABLED,
             turnBearing = currentStep?.maneuver?.bearingAfter?.toFloat() ?: 0f
         )
     }
@@ -689,6 +759,29 @@ class NavigationViewModel(
             distanceToTurn < 200 -> ActivationReason.APPROACHING_TURN
             else -> null
         }
+    }
+
+    private fun logLocationIfNeeded(
+        location: Point,
+        speed: Float,
+        bearing: Float,
+        accuracy: Float
+    ) {
+        val now = System.currentTimeMillis()
+        if (now - lastLocationLogTime < 10_000L) return
+        lastLocationLogTime = now
+        diagnosticLogger?.log(
+            tag = "WayyLocation",
+            message = "Location update",
+            data = mapOf(
+                "lat" to location.latitude(),
+                "lng" to location.longitude(),
+                "speedMph" to speed,
+                "bearing" to bearing,
+                "accuracy" to accuracy,
+                "arMode" to _uiState.value.arMode.name
+            )
+        )
     }
 
     private fun handleArrival(location: Point) {

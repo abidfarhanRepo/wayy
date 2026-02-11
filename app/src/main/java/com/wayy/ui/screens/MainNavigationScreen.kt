@@ -67,18 +67,28 @@ import androidx.compose.runtime.rememberUpdatedState
 import com.wayy.data.sensor.LocationManager
 import com.wayy.data.sensor.DeviceOrientationManager
 import com.wayy.data.repository.LocalPoiItem
+import com.wayy.ar.ARCapability
+import com.wayy.ar.ARCapabilityChecker
+import com.wayy.capture.CaptureEvent
+import com.wayy.capture.CaptureSessionInfo
+import com.wayy.capture.NavigationCaptureController
+import com.wayy.debug.DiagnosticLogger
 import com.wayy.map.MapLibreManager
 import com.wayy.map.MapViewAutoLifecycle
 import com.wayy.map.MapStyleManager
 import com.wayy.map.WazeStyleManager
 import com.wayy.navigation.NavigationUtils
 import com.wayy.ui.components.camera.CameraPreviewCard
+import com.wayy.ui.components.camera.CameraPreviewSurface
 import com.wayy.ui.components.camera.LaneConfig
+import com.wayy.ui.components.camera.LaneGuidanceOverlay
+import com.wayy.ui.components.camera.TurnArrowOverlay
 import com.wayy.ui.components.common.QuickActionsBar
 import com.wayy.ui.components.common.TopBar
 import com.wayy.ui.components.glass.GlassIconButton
 import com.wayy.ui.components.navigation.TurnBanner
 import com.wayy.ui.theme.WayyColors
+import com.wayy.viewmodel.ARMode
 import com.wayy.viewmodel.NavigationState
 import com.wayy.viewmodel.NavigationViewModel
 import kotlinx.coroutines.delay
@@ -113,11 +123,14 @@ fun MainNavigationScreen(
     val wazeStyleManager = remember { WazeStyleManager() }
     val locationManager = remember { LocationManager(context) }
     val orientationManager = remember { DeviceOrientationManager(context) }
+    val arCapabilityChecker = remember { ARCapabilityChecker(context) }
+    val captureController = remember { NavigationCaptureController(context) }
+    val diagnosticLogger = remember { DiagnosticLogger(context) }
+    var videoCapture by remember { mutableStateOf<androidx.camera.video.VideoCapture<androidx.camera.video.Recorder>?>(null) }
     val localPois = viewModel.localPois?.collectAsState()?.value.orEmpty()
     val trafficReports = viewModel.trafficReports?.collectAsState()?.value.orEmpty()
     val trafficSegments = viewModel.trafficSegments.collectAsState().value
     val trafficSpeedMps by viewModel.trafficSpeedMps.collectAsState()
-    val trafficHistory = viewModel.trafficHistory.collectAsState().value
     val latestPois = rememberUpdatedState(localPois)
     val deviceBearing by orientationManager.currentBearing.collectAsState()
 
@@ -164,9 +177,20 @@ fun MainNavigationScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasCameraPermission = granted
+        diagnosticLogger.log(
+            tag = "WayyCamera",
+            message = if (granted) "Camera permission granted" else "Camera permission denied"
+        )
     }
 
     LaunchedEffect(Unit) {
+        val capability = arCapabilityChecker.check()
+        viewModel.updateArCapability(capability)
+        diagnosticLogger.log(
+            tag = "WayyAR",
+            message = "AR capability checked",
+            data = mapOf("capability" to capability.capability.name, "message" to capability.message)
+        )
         if (!hasLocationPermission) {
             permissionLauncher.launch(
                 arrayOf(
@@ -208,8 +232,8 @@ fun MainNavigationScreen(
         }
     }
 
-    LaunchedEffect(uiState.isAROverlayActive) {
-        if (uiState.isAROverlayActive && uiState.isNavigating && !hasCameraPermission) {
+    LaunchedEffect(uiState.arMode, hasCameraPermission) {
+        if (uiState.arMode != ARMode.DISABLED && !hasCameraPermission) {
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
@@ -243,6 +267,20 @@ fun MainNavigationScreen(
                         update.bearing,
                         update.accuracy
                     )
+                    captureController.logEvent(
+                        CaptureEvent(
+                            type = "location",
+                            timestamp = System.currentTimeMillis(),
+                            payload = mapOf(
+                                "lat" to update.location.latitude(),
+                                "lng" to update.location.longitude(),
+                                "speedMph" to update.speed,
+                                "bearing" to update.bearing,
+                                "accuracy" to update.accuracy,
+                                "arMode" to uiState.arMode.name
+                            )
+                        )
+                    )
                     mapManager.updateUserLocation(
                         LatLng(update.location.latitude(), update.location.longitude()),
                         update.bearing
@@ -261,85 +299,151 @@ fun MainNavigationScreen(
         }
     }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            captureController.stop(
+                CaptureSessionInfo(
+                    timestamp = System.currentTimeMillis(),
+                    data = mapOf("reason" to "composable_disposed")
+                )
+            )
+        }
+    }
+
+    val shouldCapture = uiState.isNavigating && uiState.isCaptureEnabled && hasCameraPermission
+    LaunchedEffect(shouldCapture, videoCapture, uiState.currentRoute, uiState.arMode) {
+        val capture = videoCapture ?: return@LaunchedEffect
+        if (shouldCapture) {
+            captureController.startIfNeeded(
+                capture,
+                CaptureSessionInfo(
+                    timestamp = System.currentTimeMillis(),
+                    data = mapOf(
+                        "arMode" to uiState.arMode.name,
+                        "routeDistance" to uiState.currentRoute?.distance,
+                        "routeDuration" to uiState.currentRoute?.duration
+                    )
+                )
+            )
+            diagnosticLogger.log(tag = "WayyCapture", message = "Capture started")
+        } else {
+            captureController.stop(
+                CaptureSessionInfo(
+                    timestamp = System.currentTimeMillis(),
+                    data = mapOf("reason" to "capture_disabled_or_stopped")
+                )
+            )
+            diagnosticLogger.log(tag = "WayyCapture", message = "Capture stopped")
+        }
+    }
+
     androidx.compose.foundation.layout.Box(
         modifier = Modifier
             .fillMaxSize()
             .background(WayyColors.BgPrimary)
     ) {
-        MapViewAutoLifecycle(
-            manager = mapManager,
-            modifier = Modifier.fillMaxSize(),
-            onMapReady = { map ->
-                mapStyleManager.applyDarkStyle(map) {
-                    map.cameraPosition = CameraPosition.Builder()
-                        .target(LatLng(25.2854, 51.5310))
-                        .zoom(13.0)
-                        .bearing(0.0)
-                        .build()
-
-                    val locationSource = GeoJsonSource(
-                        MapStyleManager.LOCATION_SOURCE_ID,
-                        Feature.fromGeometry(Point.fromLngLat(51.5310, 25.2854))
-                    )
-                    map.style?.addSource(locationSource)
-                    wazeStyleManager.addUserLocationMarker(map, MapStyleManager.LOCATION_SOURCE_ID)
-
-                    val poiSource = GeoJsonSource(
-                        MapStyleManager.POI_SOURCE_ID,
-                        FeatureCollection.fromFeatures(emptyArray())
-                    )
-                    val trafficSource = GeoJsonSource(
-                        MapStyleManager.TRAFFIC_SOURCE_ID,
-                        FeatureCollection.fromFeatures(emptyArray())
-                    )
-                    val trafficIntensitySource = GeoJsonSource(
-                        MapStyleManager.TRAFFIC_INTENSITY_SOURCE_ID,
-                        FeatureCollection.fromFeatures(emptyArray())
-                    )
-                    map.style?.addSource(poiSource)
-                    map.style?.addSource(trafficSource)
-                    map.style?.addSource(trafficIntensitySource)
-                    mapStyleManager.addPoiLayer(map, MapStyleManager.POI_SOURCE_ID)
-                    mapStyleManager.addTrafficLayer(map, MapStyleManager.TRAFFIC_SOURCE_ID)
-                    mapStyleManager.addTrafficPulseLayer(map, MapStyleManager.TRAFFIC_SOURCE_ID)
-                    mapStyleManager.addTrafficIntensityLayer(
-                        map,
-                        MapStyleManager.TRAFFIC_INTENSITY_SOURCE_ID
-                    )
-
-                    uiState.currentLocation?.let { location ->
-                        mapManager.updateUserLocation(
-                            LatLng(location.latitude(), location.longitude())
-                        )
-                        mapManager.centerOnUserLocation(
-                            LatLng(location.latitude(), location.longitude())
-                        )
+        if (uiState.arMode == ARMode.FULL_AR) {
+            if (hasCameraPermission) {
+                CameraPreviewSurface(
+                    modifier = Modifier.fillMaxSize(),
+                    onVideoCaptureReady = { capture ->
+                        videoCapture = capture
+                        captureController.attachVideoCapture(capture)
+                    },
+                    onError = { error ->
+                        diagnosticLogger.log(tag = "WayyAR", message = "Camera error", level = "WARN", data = mapOf("error" to error))
                     }
-
-                    map.addOnMapClickListener { latLng ->
-                        val screenPoint = map.projection.toScreenLocation(latLng)
-                        val features = map.queryRenderedFeatures(
-                            screenPoint,
-                            MapStyleManager.POI_LAYER_ID
-                        )
-                        val poiId = features.firstOrNull()?.getStringProperty("id")
-                        val match = poiId?.let { id ->
-                            latestPois.value.firstOrNull { poi -> poi.id == id }
-                        }
-                        selectedPoi = match
-                        match != null
-                    }
-
-                    map.addOnMapLongClickListener { latLng ->
-                        pendingPoiLocation = Point.fromLngLat(latLng.longitude, latLng.latitude)
-                        addPoiName = ""
-                        addPoiCategory = "general"
-                        showAddPoiDialog = true
-                        true
-                    }
+                )
+            } else {
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(WayyColors.BgPrimary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Camera permission required",
+                        color = Color.White,
+                        fontSize = 16.sp
+                    )
                 }
             }
-        )
+        } else {
+            MapViewAutoLifecycle(
+                manager = mapManager,
+                modifier = Modifier.fillMaxSize(),
+                onMapReady = { map ->
+                    mapStyleManager.applyDarkStyle(map) {
+                        map.cameraPosition = CameraPosition.Builder()
+                            .target(LatLng(25.2854, 51.5310))
+                            .zoom(13.0)
+                            .bearing(0.0)
+                            .build()
+
+                        val locationSource = GeoJsonSource(
+                            MapStyleManager.LOCATION_SOURCE_ID,
+                            Feature.fromGeometry(Point.fromLngLat(51.5310, 25.2854))
+                        )
+                        map.style?.addSource(locationSource)
+                        wazeStyleManager.addUserLocationMarker(map, MapStyleManager.LOCATION_SOURCE_ID)
+
+                        val poiSource = GeoJsonSource(
+                            MapStyleManager.POI_SOURCE_ID,
+                            FeatureCollection.fromFeatures(emptyArray())
+                        )
+                        val trafficSource = GeoJsonSource(
+                            MapStyleManager.TRAFFIC_SOURCE_ID,
+                            FeatureCollection.fromFeatures(emptyArray())
+                        )
+                        val trafficIntensitySource = GeoJsonSource(
+                            MapStyleManager.TRAFFIC_INTENSITY_SOURCE_ID,
+                            FeatureCollection.fromFeatures(emptyArray())
+                        )
+                        map.style?.addSource(poiSource)
+                        map.style?.addSource(trafficSource)
+                        map.style?.addSource(trafficIntensitySource)
+                        mapStyleManager.addPoiLayer(map, MapStyleManager.POI_SOURCE_ID)
+                        mapStyleManager.addTrafficLayer(map, MapStyleManager.TRAFFIC_SOURCE_ID)
+                        mapStyleManager.addTrafficPulseLayer(map, MapStyleManager.TRAFFIC_SOURCE_ID)
+                        mapStyleManager.addTrafficIntensityLayer(
+                            map,
+                            MapStyleManager.TRAFFIC_INTENSITY_SOURCE_ID
+                        )
+
+                        uiState.currentLocation?.let { location ->
+                            mapManager.updateUserLocation(
+                                LatLng(location.latitude(), location.longitude())
+                            )
+                            mapManager.centerOnUserLocation(
+                                LatLng(location.latitude(), location.longitude())
+                            )
+                        }
+
+                        map.addOnMapClickListener { latLng ->
+                            val screenPoint = map.projection.toScreenLocation(latLng)
+                            val features = map.queryRenderedFeatures(
+                                screenPoint,
+                                MapStyleManager.POI_LAYER_ID
+                            )
+                            val poiId = features.firstOrNull()?.getStringProperty("id")
+                            val match = poiId?.let { id ->
+                                latestPois.value.firstOrNull { poi -> poi.id == id }
+                            }
+                            selectedPoi = match
+                            match != null
+                        }
+
+                        map.addOnMapLongClickListener { latLng ->
+                            pendingPoiLocation = Point.fromLngLat(latLng.longitude, latLng.latitude)
+                            addPoiName = ""
+                            addPoiCategory = "general"
+                            showAddPoiDialog = true
+                            true
+                        }
+                    }
+                }
+            )
+        }
 
         LaunchedEffect(localPois) {
             mapManager.getMapLibreMap()?.style?.getSourceAs<GeoJsonSource>(
@@ -470,7 +574,7 @@ fun MainNavigationScreen(
         }
 
         AnimatedVisibility(
-            visible = uiState.isAROverlayActive && uiState.isNavigating,
+            visible = uiState.isAROverlayActive && uiState.isNavigating && uiState.arMode == ARMode.PIP_OVERLAY,
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .navigationBarsPadding()
@@ -485,7 +589,29 @@ fun MainNavigationScreen(
                 turnBearing = uiState.turnBearing,
                 isApproaching = uiState.isApproachingTurn,
                 lanes = laneConfigs,
-                hasCameraPermission = hasCameraPermission
+                hasCameraPermission = hasCameraPermission,
+                onVideoCaptureReady = { capture ->
+                    videoCapture = capture
+                    captureController.attachVideoCapture(capture)
+                }
+            )
+        }
+
+        if (uiState.arMode == ARMode.FULL_AR && uiState.isNavigating) {
+            TurnArrowOverlay(
+                direction = uiState.nextDirection,
+                distanceToTurnMeters = uiState.distanceToTurnMeters,
+                deviceBearing = uiState.deviceBearing,
+                turnBearing = uiState.turnBearing,
+                isApproaching = uiState.isApproachingTurn,
+                modifier = Modifier.align(Alignment.Center)
+            )
+            LaneGuidanceOverlay(
+                lanes = laneConfigs,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 24.dp)
             )
         }
 
@@ -550,30 +676,6 @@ fun MainNavigationScreen(
                     ) {
                         Text("Navigate")
                     }
-                }
-            }
-        }
-
-        if (uiState.isNavigating) {
-            val historyBars = buildTrafficHistoryBars(trafficHistory)
-            if (historyBars.isNotEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 210.dp, end = 16.dp)
-                        .background(
-                            color = WayyColors.BgSecondary.copy(alpha = 0.9f),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .padding(12.dp)
-                ) {
-                    Text(
-                        text = "Traffic history (24h)",
-                        color = WayyColors.TextSecondary,
-                        fontSize = 12.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    TrafficHistoryChart(historyBars)
                 }
             }
         }
@@ -756,7 +858,7 @@ fun MainNavigationScreen(
         QuickActionsBar(
             isNavigating = uiState.isNavigating,
             isScanning = uiState.isScanning,
-            isARActive = uiState.isARMode,
+            isARActive = uiState.arMode != ARMode.DISABLED,
             is3DActive = uiState.is3DView,
             onNavigateToggle = { viewModel.toggleNavigation() },
             onScanToggle = { viewModel.toggleScanning() },

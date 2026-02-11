@@ -4,6 +4,10 @@ import android.util.Log
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.Recorder
+import androidx.camera.video.VideoCapture
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
 import androidx.camera.view.PreviewView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,7 +21,8 @@ import androidx.core.content.ContextCompat
 @Composable
 fun CameraPreviewSurface(
     modifier: Modifier = Modifier,
-    onError: (String) -> Unit = {}
+    onError: (String) -> Unit = {},
+    onVideoCaptureReady: ((VideoCapture<Recorder>) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -32,10 +37,15 @@ fun CameraPreviewSurface(
                 val preview = Preview.Builder().build().also {
                     it.setSurfaceProvider(previewView.surfaceProvider)
                 }
+                val recorder = Recorder.Builder()
+                    .setQualitySelector(QualitySelector.from(Quality.HD))
+                    .build()
+                val videoCapture = VideoCapture.withOutput(recorder)
                 val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
                 try {
                     cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
+                    cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, videoCapture)
+                    onVideoCaptureReady?.invoke(videoCapture)
                 } catch (e: Exception) {
                     Log.e("WayyCamera", "Camera bind failed", e)
                     onError("Camera failed to start")
