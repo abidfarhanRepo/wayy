@@ -114,7 +114,7 @@ For TileServer GL Light with MBTiles:
 docker run -v $(pwd)/tiles:/data -p 8080:8080 maptiler/tileserver-gl-light
 ```
 
-This same style URL is used for offline downloads, so the device will cache tiles from your server. Map tile requests include a Wayy User-Agent header and cache responses for up to 7 days.
+This same style URL is used for offline downloads, so the device will cache tiles from your server. Map tile requests include a Wayy User-Agent header and cache responses for up to 7 days. Label language is forced to English when available (`name:en` → `name` fallback).
 
 ## Geocoding
 

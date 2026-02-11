@@ -10,6 +10,7 @@ import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.RasterLayer
+import org.maplibre.android.style.layers.SymbolLayer
 // Note: Some MapLibre SDK versions may not have RasterSource or StyleTransition
 // We'll use simpler styling approach
 
@@ -57,9 +58,26 @@ class MapStyleManager {
         onStyleLoaded: () -> Unit = {}
     ) {
         map.setStyle(Style.Builder().fromUri(STYLE_URI)) { style ->
+            applyEnglishLabels(style)
             android.util.Log.d("MapStyleManager", "Style loaded: $STYLE_URI")
             onStyleLoaded()
         }
+    }
+
+    private fun applyEnglishLabels(style: Style) {
+        val labelExpression = Expression.coalesce(
+            Expression.get("name:en"),
+            Expression.get("name"),
+            Expression.get("name:ar")
+        )
+        style.layers.orEmpty()
+            .filterIsInstance<SymbolLayer>()
+            .filter { it.textField != null }
+            .forEach { layer ->
+                layer.setProperties(
+                    PropertyFactory.textField(labelExpression)
+                )
+            }
     }
 
     /**

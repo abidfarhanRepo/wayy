@@ -89,6 +89,7 @@ fun RouteOverviewScreen(
     var poiName by remember { mutableStateOf("") }
     var poiCategory by remember { mutableStateOf("general") }
     var selectedCategory by remember { mutableStateOf("all") }
+    var activeTab by remember { mutableStateOf(RouteOverviewTab.SEARCH) }
     val searchResults by viewModel.searchResults.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
     val searchError by viewModel.searchError.collectAsState()
@@ -185,138 +186,162 @@ fun RouteOverviewScreen(
                 CircularProgressIndicator(color = WayyColors.PrimaryLime)
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
-
-            GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = "Offline Maps",
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
-                    )
-                    val summary = offlineSummary
-                    val summaryText = if (summary == null) {
-                        "Checking offline data..."
-                    } else {
-                        val regions = if (summary.regionCount == 0) {
-                            "No areas saved"
-                        } else {
-                            "${summary.regionCount} area${if (summary.regionCount == 1) "" else "s"} saved"
-                        }
-                        val status = if (summary.isDownloading) "Downloading" else "Idle"
-                        "$regions • ${formatBytes(summary.dbSizeBytes)} • $status"
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = summaryText,
-                        color = WayyColors.TextSecondary,
-                        fontSize = 12.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(5.0, 12.0, 20.0).forEach { radius ->
-                            FilterChip(
-                                selected = offlineRadius == radius,
-                                onClick = { offlineRadius = radius },
-                                label = { Text("${radius.toInt()} km") }
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = {
-                            val location = currentLocation
-                            if (location == null) {
-                                coroutineScope.launch {
-                                    snackbarHostState.showSnackbar("Location required for offline download")
-                                }
-                            } else {
-                                offlineMapManager.ensureRegion(
-                                    center = org.maplibre.android.geometry.LatLng(location.latitude(), location.longitude()),
-                                    radiusKm = offlineRadius,
-                                    minZoom = 12.0,
-                                    maxZoom = 19.0
-                                )
-                                offlineMapManager.loadSummary { summary ->
-                                    offlineSummary = summary
-                                }
-                                coroutineScope.launch {
-                                    snackbarHostState.showSnackbar("Offline download started")
-                                }
-                            }
-                        },
-                        enabled = currentLocation != null
-                    ) {
-                        Text("Download Offline Area")
-                    }
-                }
-            }
-
             Spacer(modifier = Modifier.height(16.dp))
 
-            GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = "Export Capture + Logs",
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = {
-                            coroutineScope.launch {
-                                val exportFile = exportManager.createExportBundle()
-                                if (exportFile == null) {
-                                    snackbarHostState.showSnackbar("Nothing to export yet")
-                                    return@launch
-                                }
-                                val uri = FileProvider.getUriForFile(
-                                    context,
-                                    "${context.packageName}.fileprovider",
-                                    exportFile
-                                )
-                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                    type = "application/zip"
-                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                context.startActivity(
-                                    android.content.Intent.createChooser(shareIntent, "Share Wayy export")
-                                )
-                            }
-                        }
-                    ) {
-                        Text("Export Bundle")
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Recent routes section
             Row(
-                modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth(0.9f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(
-                    imageVector = if (showSearchResults) Icons.Default.Search else Icons.Default.History,
-                    contentDescription = null,
-                    tint = WayyColors.PrimaryLime
+                FilterChip(
+                    selected = activeTab == RouteOverviewTab.SEARCH,
+                    onClick = { activeTab = RouteOverviewTab.SEARCH },
+                    label = { Text("Search") }
                 )
-                Text(
-                    text = if (showSearchResults) "Results" else "Local POIs",
-                    color = WayyColors.TextSecondary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
+                FilterChip(
+                    selected = activeTab == RouteOverviewTab.SETTINGS,
+                    onClick = { activeTab = RouteOverviewTab.SETTINGS },
+                    label = { Text("Settings") }
                 )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            if (activeTab == RouteOverviewTab.SETTINGS) {
+                GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "Offline Maps",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                        val summary = offlineSummary
+                        val summaryText = if (summary == null) {
+                            "Checking offline data..."
+                        } else {
+                            val regions = if (summary.regionCount == 0) {
+                                "No areas saved"
+                            } else {
+                                "${summary.regionCount} area${if (summary.regionCount == 1) "" else "s"} saved"
+                            }
+                            val status = if (summary.isDownloading) "Downloading" else "Idle"
+                            "$regions • ${formatBytes(summary.dbSizeBytes)} • $status"
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = summaryText,
+                            color = WayyColors.TextSecondary,
+                            fontSize = 12.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(5.0, 12.0, 20.0).forEach { radius ->
+                                FilterChip(
+                                    selected = offlineRadius == radius,
+                                    onClick = { offlineRadius = radius },
+                                    label = { Text("${radius.toInt()} km") }
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                val location = currentLocation
+                                if (location == null) {
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar("Location required for offline download")
+                                    }
+                                } else {
+                                    offlineMapManager.ensureRegion(
+                                        center = org.maplibre.android.geometry.LatLng(
+                                            location.latitude(),
+                                            location.longitude()
+                                        ),
+                                        radiusKm = offlineRadius,
+                                        minZoom = 12.0,
+                                        maxZoom = 19.0
+                                    )
+                                    offlineMapManager.loadSummary { summary ->
+                                        offlineSummary = summary
+                                    }
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar("Offline download started")
+                                    }
+                                }
+                            },
+                            enabled = currentLocation != null
+                        ) {
+                            Text("Download Offline Area")
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "Export Capture + Logs",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    val exportFile = exportManager.createExportBundle()
+                                    if (exportFile == null) {
+                                        snackbarHostState.showSnackbar("Nothing to export yet")
+                                        return@launch
+                                    }
+                                    val uri = FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        exportFile
+                                    )
+                                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                        type = "application/zip"
+                                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(
+                                        android.content.Intent.createChooser(shareIntent, "Share Wayy export")
+                                    )
+                                }
+                            }
+                        ) {
+                            Text("Export Bundle")
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+
+            if (activeTab == RouteOverviewTab.SEARCH) {
+                // Recent routes section
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (showSearchResults) Icons.Default.Search else Icons.Default.History,
+                        contentDescription = null,
+                        tint = WayyColors.PrimaryLime
+                    )
+                    Text(
+                        text = if (showSearchResults) "Results" else "Local POIs",
+                        color = WayyColors.TextSecondary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 if (!showSearchResults) {
                     GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
@@ -542,6 +567,7 @@ fun RouteOverviewScreen(
                     }
                 }
             }
+            }
         }
 
         SnackbarHost(
@@ -628,6 +654,11 @@ private data class PoiDistance(
     val poi: LocalPoiItem,
     val distanceMeters: Double?
 )
+
+private enum class RouteOverviewTab {
+    SEARCH,
+    SETTINGS
+}
 
 private data class PoiCategoryOption(
     val id: String,
