@@ -2,6 +2,7 @@ package com.wayy.map
 
 import android.content.Context
 import android.util.Log
+import com.wayy.BuildConfig
 import com.wayy.debug.DiagnosticLogger
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
@@ -14,12 +15,13 @@ import java.nio.charset.Charset
 import java.io.File
 
 class OfflineMapManager(
-    context: Context,
+    private val context: Context,
     private val diagnosticLogger: DiagnosticLogger
 ) {
 
     private val offlineManager: OfflineManager = OfflineManager.getInstance(context)
     private val offlineDbFile = File(context.filesDir, "mbgl-offline.db")
+    private val cacheStyleFile = File(context.cacheDir, "protomaps_style_runtime.json")
     private var isDownloading = false
 
     fun loadSummary(callback: (OfflineSummary) -> Unit) {
@@ -58,7 +60,7 @@ class OfflineMapManager(
     private fun createRegion(center: LatLng, radiusKm: Double, minZoom: Double, maxZoom: Double) {
         val bounds = buildBounds(center, radiusKm)
         val definition = OfflineTilePyramidRegionDefinition(
-            MapStyleManager.STYLE_URI,
+            resolveStyleUrl(),
             bounds,
             minZoom,
             maxZoom,
@@ -132,11 +134,25 @@ class OfflineMapManager(
         return LatLngBounds.from(northeast.latitude, northeast.longitude, southwest.latitude, southwest.longitude)
     }
 
+    private fun resolveStyleUrl(): String {
+        val tilejsonUrl = BuildConfig.PMTILES_TILEJSON_URL
+        if (tilejsonUrl.isBlank()) {
+            return MapStyleManager.STYLE_URI
+        }
+        cacheStyleFile.parentFile?.mkdirs()
+        val rawStyle = context.assets.open(PROTOMAPS_STYLE_ASSET)
+            .bufferedReader()
+            .use { it.readText() }
+        cacheStyleFile.writeText(rawStyle.replace(TILEJSON_PLACEHOLDER, tilejsonUrl))
+        return cacheStyleFile.toURI().toString()
+    }
+
     companion object {
         private const val TAG = "WayyOffline"
+        private const val PROTOMAPS_STYLE_ASSET = "protomaps_style.json"
+        private const val TILEJSON_PLACEHOLDER = "__TILEJSON_URL__"
     }
 }
-
 data class OfflineSummary(
     val regionCount: Int,
     val dbSizeBytes: Long,
