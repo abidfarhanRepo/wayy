@@ -2,6 +2,10 @@ package com.wayy.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.wayy.data.repository.LocalPoiItem
+import com.wayy.data.repository.LocalPoiManager
+import com.wayy.data.repository.TrafficReportItem
+import com.wayy.data.repository.TrafficReportManager
 import com.wayy.data.repository.RouteHistoryItem
 import com.wayy.data.repository.RouteHistoryManager
 import com.wayy.data.model.Route
@@ -67,7 +71,9 @@ class NavigationViewModel(
     private val routeRepository: RouteRepository = RouteRepository(),
     private val turnProvider: TurnInstructionProvider = TurnInstructionProvider(),
     private val rerouteUtils: RerouteUtils = RerouteUtils(),
-    private val routeHistoryManager: RouteHistoryManager? = null
+    private val routeHistoryManager: RouteHistoryManager? = null,
+    private val localPoiManager: LocalPoiManager? = null,
+    private val trafficReportManager: TrafficReportManager? = null
 ) : ViewModel() {
 
     var isDemoMode: Boolean = false
@@ -94,6 +100,18 @@ class NavigationViewModel(
     val searchError: StateFlow<String?> = _searchError.asStateFlow()
 
     val recentRoutes = routeHistoryManager?.recentRoutes?.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList()
+    )
+
+    val localPois = localPoiManager?.recentPois?.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList()
+    )
+
+    val trafficReports = trafficReportManager?.recentReports?.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList()
@@ -163,6 +181,58 @@ class NavigationViewModel(
         _searchResults.value = emptyList()
         _isSearching.value = false
         _searchError.value = null
+    }
+
+    fun addLocalPoi(name: String, category: String) {
+        val location = _uiState.value.currentLocation
+        if (localPoiManager == null || location == null) {
+            _uiState.value = _uiState.value.copy(
+                error = "Location not available for POI"
+            )
+            return
+        }
+        viewModelScope.launch {
+            val item = LocalPoiItem(
+                id = localPoiManager.generatePoiId(location.latitude(), location.longitude()),
+                name = name,
+                category = category.ifBlank { "General" },
+                lat = location.latitude(),
+                lng = location.longitude(),
+                timestamp = System.currentTimeMillis()
+            )
+            localPoiManager.addPoi(item)
+        }
+    }
+
+    fun reportTraffic() {
+        val location = _uiState.value.currentLocation
+        if (trafficReportManager == null || location == null) {
+            _uiState.value = _uiState.value.copy(
+                error = "Location not available for traffic report"
+            )
+            return
+        }
+        val speedMps = _uiState.value.currentSpeed / 2.23694f
+        val severity = when {
+            speedMps < 2 -> "stopped"
+            speedMps < 6 -> "slow"
+            speedMps < 12 -> "moderate"
+            else -> "clear"
+        }
+        viewModelScope.launch {
+            val report = TrafficReportItem(
+                id = trafficReportManager.generateReportId(
+                    location.latitude(),
+                    location.longitude()
+                ),
+                lat = location.latitude(),
+                lng = location.longitude(),
+                speedMps = speedMps,
+                severity = severity,
+                timestamp = System.currentTimeMillis()
+            )
+            trafficReportManager.addReport(report)
+        }
     }
 
     private fun initializeNavigation(route: Route, destination: Point, destinationName: String?) {

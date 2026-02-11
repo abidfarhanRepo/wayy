@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -41,6 +44,7 @@ import com.wayy.map.MapViewAutoLifecycle
 import com.wayy.map.MapStyleManager
 import com.wayy.map.WazeStyleManager
 import com.wayy.ui.components.common.TopBar
+import com.wayy.ui.components.glass.GlassIconButton
 import com.wayy.ui.components.navigation.ETACard
 import com.wayy.ui.components.navigation.TurnBanner
 import com.wayy.ui.theme.WayyColors
@@ -52,6 +56,7 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 
@@ -72,6 +77,8 @@ fun MainNavigationScreen(
     val mapStyleManager = remember { MapStyleManager() }
     val wazeStyleManager = remember { WazeStyleManager() }
     val locationManager = remember { LocationManager(context) }
+    val localPois = viewModel.localPois?.collectAsState()?.value.orEmpty()
+    val trafficReports = viewModel.trafficReports?.collectAsState()?.value.orEmpty()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -181,6 +188,19 @@ fun MainNavigationScreen(
                     map.style?.addSource(locationSource)
                     wazeStyleManager.addUserLocationMarker(map, MapStyleManager.LOCATION_SOURCE_ID)
 
+                    val poiSource = GeoJsonSource(
+                        MapStyleManager.POI_SOURCE_ID,
+                        FeatureCollection.fromFeatures(emptyArray())
+                    )
+                    val trafficSource = GeoJsonSource(
+                        MapStyleManager.TRAFFIC_SOURCE_ID,
+                        FeatureCollection.fromFeatures(emptyArray())
+                    )
+                    map.style?.addSource(poiSource)
+                    map.style?.addSource(trafficSource)
+                    mapStyleManager.addPoiLayer(map, MapStyleManager.POI_SOURCE_ID)
+                    mapStyleManager.addTrafficLayer(map, MapStyleManager.TRAFFIC_SOURCE_ID)
+
                     uiState.currentLocation?.let { location ->
                         mapManager.updateUserLocation(
                             LatLng(location.latitude(), location.longitude())
@@ -192,6 +212,33 @@ fun MainNavigationScreen(
                 }
             }
         )
+
+        LaunchedEffect(localPois) {
+            mapManager.getMapLibreMap()?.style?.getSourceAs<GeoJsonSource>(
+                MapStyleManager.POI_SOURCE_ID
+            )?.let { source ->
+                val features = localPois.map { poi ->
+                    Feature.fromGeometry(Point.fromLngLat(poi.lng, poi.lat)).apply {
+                        addStringProperty("name", poi.name)
+                        addStringProperty("category", poi.category)
+                    }
+                }
+                source.setGeoJson(FeatureCollection.fromFeatures(features))
+            }
+        }
+
+        LaunchedEffect(trafficReports) {
+            mapManager.getMapLibreMap()?.style?.getSourceAs<GeoJsonSource>(
+                MapStyleManager.TRAFFIC_SOURCE_ID
+            )?.let { source ->
+                val features = trafficReports.map { report ->
+                    Feature.fromGeometry(Point.fromLngLat(report.lng, report.lat)).apply {
+                        addStringProperty("severity", report.severity)
+                    }
+                }
+                source.setGeoJson(FeatureCollection.fromFeatures(features))
+            }
+        }
 
         LaunchedEffect(uiState.isNavigating, uiState.currentRoute) {
             mapManager.getMapLibreMap()?.let { map ->
@@ -281,5 +328,15 @@ fun MainNavigationScreen(
                 contentColor = Color.White
             )
         }
+
+        GlassIconButton(
+            onClick = { viewModel.reportTraffic() },
+            icon = Icons.Default.ReportProblem,
+            contentDescription = "Report traffic",
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 20.dp, bottom = 20.dp)
+                .size(48.dp)
+        )
     }
 }

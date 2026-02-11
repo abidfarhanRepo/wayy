@@ -27,7 +27,9 @@ import com.wayy.ui.screens.RouteOverviewScreen
 import com.wayy.ui.theme.WayyColors
 import com.wayy.ui.theme.WayyTheme
 import com.wayy.ui.theme.WayyTypography
+import com.wayy.data.repository.LocalPoiManager
 import com.wayy.data.repository.RouteHistoryManager
+import com.wayy.data.repository.TrafficReportManager
 import com.wayy.viewmodel.NavigationViewModel
 import org.maplibre.geojson.Point
 
@@ -104,7 +106,9 @@ fun AppContent(
                 if (modelClass.isAssignableFrom(NavigationViewModel::class.java)) {
                     @Suppress("UNCHECKED_CAST")
                     return NavigationViewModel(
-                        routeHistoryManager = RouteHistoryManager(context)
+                        routeHistoryManager = RouteHistoryManager(context),
+                        localPoiManager = LocalPoiManager(context),
+                        trafficReportManager = TrafficReportManager(context)
                     ) as T
                 }
                 throw IllegalArgumentException("Unknown ViewModel class")
@@ -144,6 +148,13 @@ fun AppContent(
                     navigationViewModel.startNavigation(
                         Point.fromLngLat(recentRoute.endLng, recentRoute.endLat),
                         recentRoute.endName
+                    )
+                    currentScreen = AppScreen.Main
+                },
+                onPoiSelected = { poi ->
+                    navigationViewModel.startNavigation(
+                        Point.fromLngLat(poi.lng, poi.lat),
+                        poi.name
                     )
                     currentScreen = AppScreen.Main
                 }

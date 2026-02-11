@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -37,12 +38,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wayy.data.repository.RouteHistoryItem
+import com.wayy.data.repository.LocalPoiItem
 import com.wayy.data.repository.PlaceResult
 import com.wayy.ui.components.glass.GlassCard
 import com.wayy.ui.theme.WayyColors
 import com.wayy.navigation.NavigationUtils
 import com.wayy.viewmodel.NavigationViewModel
 import kotlinx.coroutines.delay
+import org.maplibre.geojson.Point
 
 /**
  * Route overview screen for searching and selecting destinations
@@ -51,13 +54,18 @@ import kotlinx.coroutines.delay
 fun RouteOverviewScreen(
     viewModel: NavigationViewModel = viewModel(),
     onDestinationSelected: (PlaceResult) -> Unit = {},
-    onRecentRouteClick: (RouteHistoryItem) -> Unit = {}
+    onRecentRouteClick: (RouteHistoryItem) -> Unit = {},
+    onPoiSelected: (LocalPoiItem) -> Unit = {}
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    var poiName by remember { mutableStateOf("") }
+    var poiCategory by remember { mutableStateOf("") }
     val searchResults by viewModel.searchResults.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
     val searchError by viewModel.searchError.collectAsState()
+    val localPois = viewModel.localPois?.collectAsState()?.value.orEmpty()
     val recentRoutes = viewModel.recentRoutes?.collectAsState()?.value.orEmpty()
+    val currentLocation = viewModel.uiState.collectAsState().value.currentLocation
     val showSearchResults = searchQuery.trim().length >= 3
 
     LaunchedEffect(searchQuery) {
@@ -136,7 +144,7 @@ fun RouteOverviewScreen(
                     tint = WayyColors.PrimaryLime
                 )
                 Text(
-                    text = if (showSearchResults) "Results" else "Recent Routes",
+                    text = if (showSearchResults) "Results" else "Local POIs",
                     color = WayyColors.TextSecondary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium
@@ -144,6 +152,41 @@ fun RouteOverviewScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            if (!showSearchResults) {
+                GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        OutlinedTextField(
+                            value = poiName,
+                            onValueChange = { poiName = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("POI name") },
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = poiCategory,
+                            onValueChange = { poiCategory = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Category (optional)") },
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                viewModel.addLocalPoi(poiName.trim(), poiCategory.trim())
+                                poiName = ""
+                                poiCategory = ""
+                            },
+                            enabled = poiName.isNotBlank(),
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text("Save POI")
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
 
             searchError?.let { message ->
                 Text(
@@ -185,6 +228,56 @@ fun RouteOverviewScreen(
                         }
                     }
                 } else {
+                    if (localPois.isEmpty()) {
+                        item {
+                            Text(
+                                text = "No local POIs yet",
+                                color = WayyColors.TextSecondary,
+                                fontSize = 13.sp
+                            )
+                        }
+                    } else {
+                        items(localPois) { poi ->
+                            val distance = currentLocation?.let { location ->
+                                NavigationUtils.formatDistance(
+                                    NavigationUtils.calculateDistanceMeters(
+                                        location,
+                                        Point.fromLngLat(poi.lng, poi.lat)
+                                    )
+                                )
+                            } ?: ""
+                            RecentRouteCard(
+                                name = poi.name,
+                                address = poi.category.ifBlank { "POI" },
+                                distance = if (distance.isEmpty()) "Select" else distance,
+                                onClick = { onPoiSelected(poi) }
+                            )
+                        }
+                    }
+
+                    item {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth(0.9f)
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.History,
+                                contentDescription = null,
+                                tint = WayyColors.PrimaryLime
+                            )
+                            Text(
+                                text = "Recent Routes",
+                                color = WayyColors.TextSecondary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
                     if (recentRoutes.isEmpty()) {
                         item {
                             Text(

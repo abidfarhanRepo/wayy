@@ -2,6 +2,7 @@ package com.wayy.map
 
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
@@ -32,6 +33,10 @@ class MapStyleManager {
         const val ROUTE_ALTERNATE_LAYER_ID = "route-alt-layer"
         const val LOCATION_SOURCE_ID = "location-source"
         const val LOCATION_LAYER_ID = "location-layer"
+        const val POI_SOURCE_ID = "poi-source"
+        const val POI_LAYER_ID = "poi-layer"
+        const val TRAFFIC_SOURCE_ID = "traffic-source"
+        const val TRAFFIC_LAYER_ID = "traffic-layer"
     }
 
     /**
@@ -160,6 +165,32 @@ class MapStyleManager {
      */
     fun setSmoothTransitions(map: MapLibreMap) {
         // Disabled for compatibility - transitions are handled by map SDK
+    }
+
+    fun addPoiLayer(map: MapLibreMap, sourceId: String = POI_SOURCE_ID) {
+        val layer = CircleLayer(POI_LAYER_ID, sourceId).apply {
+            setProperties(
+                PropertyFactory.circleRadius(6f),
+                PropertyFactory.circleColor("#22D3EE"),
+                PropertyFactory.circleStrokeColor("#FFFFFF"),
+                PropertyFactory.circleStrokeWidth(1.5f),
+                PropertyFactory.circleOpacity(0.9f)
+            )
+        }
+        map.style?.addLayer(layer)
+    }
+
+    fun addTrafficLayer(map: MapLibreMap, sourceId: String = TRAFFIC_SOURCE_ID) {
+        val layer = CircleLayer(TRAFFIC_LAYER_ID, sourceId).apply {
+            setProperties(
+                PropertyFactory.circleRadius(7f),
+                PropertyFactory.circleColor("#FB923C"),
+                PropertyFactory.circleStrokeColor("#FFFFFF"),
+                PropertyFactory.circleStrokeWidth(1.5f),
+                PropertyFactory.circleOpacity(0.85f)
+            )
+        }
+        map.style?.addLayer(layer)
     }
 
     /**
