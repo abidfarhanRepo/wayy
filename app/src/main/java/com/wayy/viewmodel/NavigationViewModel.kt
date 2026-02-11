@@ -85,6 +85,12 @@ class NavigationViewModel(
     private var activeTripId: String? = null
     private var streetSegmentTracker: StreetSegmentTracker? = null
     private var lastTrafficLookupKey: String? = null
+    private var lastTrafficSegmentsRefreshTime: Long = 0L
+    private var lastTrafficHistoryKey: String? = null
+    private var lastTrafficHistoryRefreshTime: Long = 0L
+
+    private val trafficRefreshIntervalMs = 10_000L
+    private val trafficHistoryRefreshIntervalMs = 60_000L
 
     private val _uiState = MutableStateFlow(NavigationUiState())
     val uiState: StateFlow<NavigationUiState> = _uiState.asStateFlow()
@@ -97,6 +103,12 @@ class NavigationViewModel(
 
     private val _trafficSpeedMps = MutableStateFlow<Double?>(null)
     val trafficSpeedMps: StateFlow<Double?> = _trafficSpeedMps.asStateFlow()
+
+    private val _trafficSegments = MutableStateFlow<List<TrafficSegment>>(emptyList())
+    val trafficSegments: StateFlow<List<TrafficSegment>> = _trafficSegments.asStateFlow()
+
+    private val _trafficHistory = MutableStateFlow<List<TrafficHistoryPoint>>(emptyList())
+    val trafficHistory: StateFlow<List<TrafficHistoryPoint>> = _trafficHistory.asStateFlow()
 
     private val _destination = MutableStateFlow<Point?>(null)
     val destination: StateFlow<Point?> = _destination.asStateFlow()
@@ -136,6 +148,20 @@ class NavigationViewModel(
         var lastPoint: Point,
         var distanceMeters: Double,
         var sampleCount: Int
+    )
+
+    data class TrafficSegment(
+        val startLat: Double,
+        val startLng: Double,
+        val endLat: Double,
+        val endLng: Double,
+        val severity: String,
+        val averageSpeedMps: Double
+    )
+
+    data class TrafficHistoryPoint(
+        val bucketStartMs: Long,
+        val averageSpeedMps: Double
     )
 
     fun startNavigation(destination: Point, destinationName: String? = null) {
@@ -212,11 +238,22 @@ class NavigationViewModel(
             )
             return
         }
+        addLocalPoiAt(name, category, location)
+    }
+
+    fun addLocalPoiAt(name: String, category: String, location: Point) {
+        if (localPoiManager == null) {
+            _uiState.value = _uiState.value.copy(
+                error = "POI manager not available"
+            )
+            return
+        }
+        val normalizedCategory = normalizePoiCategory(category)
         viewModelScope.launch {
             val item = LocalPoiItem(
                 id = localPoiManager.generatePoiId(location.latitude(), location.longitude()),
                 name = name,
-                category = category.ifBlank { "General" },
+                category = normalizedCategory,
                 lat = location.latitude(),
                 lng = location.longitude(),
                 timestamp = System.currentTimeMillis()
@@ -225,7 +262,19 @@ class NavigationViewModel(
         }
     }
 
-    fun reportTraffic() {
+    fun removeLocalPoi(poiId: String) {
+        if (localPoiManager == null) {
+            _uiState.value = _uiState.value.copy(
+                error = "POI manager not available"
+            )
+            return
+        }
+        viewModelScope.launch {
+            localPoiManager.removePoi(poiId)
+        }
+    }
+
+    fun reportTraffic(severity: String) {
         val location = _uiState.value.currentLocation
         if (trafficReportManager == null || location == null) {
             _uiState.value = _uiState.value.copy(
@@ -234,12 +283,14 @@ class NavigationViewModel(
             return
         }
         val speedMps = _uiState.value.currentSpeed / 2.23694f
-        val severity = when {
-            speedMps < 2 -> "stopped"
-            speedMps < 6 -> "slow"
-            speedMps < 12 -> "moderate"
-            else -> "clear"
+        val normalizedSeverity = severity.trim().lowercase().ifBlank {
+            when {
+                speedMps < 2 -> "heavy"
+                speedMps < 6 -> "moderate"
+                else -> "light"
+            }
         }
+        val streetName = _uiState.value.currentStreet.ifBlank { "Unknown" }
         viewModelScope.launch {
             val report = TrafficReportItem(
                 id = trafficReportManager.generateReportId(
@@ -249,10 +300,20 @@ class NavigationViewModel(
                 lat = location.latitude(),
                 lng = location.longitude(),
                 speedMps = speedMps,
-                severity = severity,
-                timestamp = System.currentTimeMillis()
+                severity = normalizedSeverity,
+                timestamp = System.currentTimeMillis(),
+                streetName = streetName
             )
             trafficReportManager.addReport(report)
+        }
+    }
+
+    private fun normalizePoiCategory(category: String): String {
+        val trimmed = category.trim()
+        return if (trimmed.isBlank()) {
+            "general"
+        } else {
+            trimmed.lowercase()
         }
     }
 
@@ -448,6 +509,8 @@ class NavigationViewModel(
         val nextInstruction = turnProvider.getNextInstruction(route, newStepIndex)
 
         refreshTrafficStatsIfNeeded(currentInstruction?.streetName.orEmpty())
+        refreshTrafficHistoryIfNeeded(currentInstruction?.streetName.orEmpty())
+        refreshTrafficSegmentsIfNeeded()
 
         val (closestIndex, _) = NavigationUtils.findClosestPointOnRoute(location, route.geometry)
         val remainingMeters = NavigationUtils.calculateRemainingDistance(
@@ -522,6 +585,64 @@ class NavigationViewModel(
                 Log.e("WayyTrip", "Traffic stat lookup failed", e)
                 _trafficSpeedMps.value = null
             }
+        }
+    }
+
+    private fun refreshTrafficHistoryIfNeeded(streetName: String) {
+        val manager = tripLoggingManager ?: return
+        val normalizedStreet = streetName.ifBlank { "Unknown" }
+        val now = System.currentTimeMillis()
+        if (now - lastTrafficHistoryRefreshTime < trafficHistoryRefreshIntervalMs) return
+        val bucketStartMs = TripLoggingManager.bucketStart(now)
+        val key = "${normalizedStreet}_$bucketStartMs"
+        if (key == lastTrafficHistoryKey) return
+        lastTrafficHistoryKey = key
+        lastTrafficHistoryRefreshTime = now
+        val startMs = bucketStartMs - (24 * 60 * 60 * 1000L)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val history = manager.getTrafficHistory(normalizedStreet, startMs, bucketStartMs)
+                _trafficHistory.value = history.map { item ->
+                    TrafficHistoryPoint(item.bucketStartMs, item.averageSpeedMps)
+                }
+            } catch (e: Exception) {
+                Log.e("WayyTrip", "Traffic history lookup failed", e)
+                _trafficHistory.value = emptyList()
+            }
+        }
+    }
+
+    private fun refreshTrafficSegmentsIfNeeded() {
+        val manager = tripLoggingManager ?: return
+        val now = System.currentTimeMillis()
+        if (now - lastTrafficSegmentsRefreshTime < trafficRefreshIntervalMs) return
+        lastTrafficSegmentsRefreshTime = now
+        val windowStartMs = now - (2 * 60 * 60 * 1000L)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val segments = manager.getRecentStreetSegments(windowStartMs, now, 200)
+                _trafficSegments.value = segments.map { segment ->
+                    TrafficSegment(
+                        startLat = segment.startLat,
+                        startLng = segment.startLng,
+                        endLat = segment.endLat,
+                        endLng = segment.endLng,
+                        severity = getTrafficSeverity(segment.averageSpeedMps),
+                        averageSpeedMps = segment.averageSpeedMps
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("WayyTrip", "Traffic segment lookup failed", e)
+                _trafficSegments.value = emptyList()
+            }
+        }
+    }
+
+    private fun getTrafficSeverity(speedMps: Double): String {
+        return when {
+            speedMps >= 12.0 -> "fast"
+            speedMps >= 6.0 -> "moderate"
+            else -> "slow"
         }
     }
 

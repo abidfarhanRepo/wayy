@@ -110,10 +110,16 @@ The app requires the following permissions:
 - **Local POI + traffic reporting** (stored on-device)
 - **Trip telemetry logging** (Room DB: GPS samples + per-street segment timing)
 - **Local traffic stats aggregation** (per-street time buckets for ETA tuning)
+- **Traffic intensity debug overlay** (map heat layer + speed metrics)
+- **POI categories + filters** (gas/food/parking/lodging)
+- **POI marker interactions** (tap to view, long-press to add, swipe to delete)
+- **Traffic report improvements** (severity selection, pulse markers, expiry)
+- **Route traffic badge** (severity overlay on route line)
 
 ## Current MVP Status (Pending)
 
-- **Traffic intensity visualization** + validation tooling
+- **Traffic intensity validation** + tuning
+- **On-device validation** (POIs, traffic, ETA stability)
 - **Offline maps** and additional traffic/POI enhancements
 
 ## Future Enhancements

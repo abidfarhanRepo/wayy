@@ -149,9 +149,25 @@ class TripLoggingManager(context: Context) {
         )
     }
 
+    suspend fun getRecentStreetSegments(
+        startMs: Long,
+        endMs: Long,
+        limit: Int = 200
+    ): List<StreetSegmentEntity> {
+        return dao.getStreetSegments(startMs, endMs, limit)
+    }
+
     suspend fun getTrafficSpeedMps(streetName: String, bucketStartMs: Long): Double? {
         return dao.getTrafficStat(streetName, bucketStartMs)
             ?.averageSpeedMps
             ?.takeIf { it > 0 }
+    }
+
+    suspend fun getTrafficHistory(
+        streetName: String,
+        startMs: Long,
+        endMs: Long
+    ): List<TrafficStatEntity> {
+        return dao.getTrafficHistory(streetName, startMs, endMs)
     }
 }

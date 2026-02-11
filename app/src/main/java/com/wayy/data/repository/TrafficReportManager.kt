@@ -18,7 +18,8 @@ data class TrafficReportItem(
     val lng: Double,
     val speedMps: Float,
     val severity: String,
-    val timestamp: Long
+    val timestamp: Long,
+    val streetName: String? = null
 )
 
 object TrafficReportSerializer : Serializer<List<TrafficReportItem>> {
@@ -48,17 +49,20 @@ class TrafficReportManager(private val context: Context) {
 
     companion object {
         private const val MAX_REPORTS = 200
+        private const val REPORT_TTL_MS = 2 * 60 * 60 * 1000L
     }
 
     val reports: Flow<List<TrafficReportItem>> = context.trafficReportDataStore.data
 
     val recentReports: Flow<List<TrafficReportItem>> = reports.map { items ->
-        items.sortedByDescending { it.timestamp }.take(50)
+        val now = System.currentTimeMillis()
+        pruneReports(items, now).sortedByDescending { it.timestamp }.take(50)
     }
 
     suspend fun addReport(report: TrafficReportItem) {
         context.trafficReportDataStore.updateData { current ->
-            val mutable = current.toMutableList()
+            val now = System.currentTimeMillis()
+            val mutable = pruneReports(current, now).toMutableList()
             val existingIndex = mutable.indexOfFirst { it.id == report.id }
             if (existingIndex >= 0) {
                 mutable[existingIndex] = report
@@ -81,5 +85,12 @@ class TrafficReportManager(private val context: Context) {
 
     fun generateReportId(lat: Double, lng: Double): String {
         return "${lat}_${lng}_${System.currentTimeMillis()}"
+    }
+
+    private fun pruneReports(
+        items: List<TrafficReportItem>,
+        now: Long
+    ): List<TrafficReportItem> {
+        return items.filter { now - it.timestamp <= REPORT_TTL_MS }
     }
 }

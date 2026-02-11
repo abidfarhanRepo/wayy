@@ -11,16 +11,30 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.DismissDirection
+import androidx.compose.material.DismissValue
+import androidx.compose.material.SwipeToDismiss
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.rememberDismissState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Hotel
+import androidx.compose.material.icons.filled.LocalGasStation
+import androidx.compose.material.icons.filled.LocalParking
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,6 +65,7 @@ import org.maplibre.geojson.Point
 /**
  * Route overview screen for searching and selecting destinations
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RouteOverviewScreen(
     viewModel: NavigationViewModel = viewModel(),
@@ -59,7 +75,8 @@ fun RouteOverviewScreen(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var poiName by remember { mutableStateOf("") }
-    var poiCategory by remember { mutableStateOf("") }
+    var poiCategory by remember { mutableStateOf("general") }
+    var selectedCategory by remember { mutableStateOf("all") }
     val searchResults by viewModel.searchResults.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
     val searchError by viewModel.searchError.collectAsState()
@@ -67,6 +84,21 @@ fun RouteOverviewScreen(
     val recentRoutes = viewModel.recentRoutes?.collectAsState()?.value.orEmpty()
     val currentLocation = viewModel.uiState.collectAsState().value.currentLocation
     val showSearchResults = searchQuery.trim().length >= 3
+    val filteredPois = localPois.filter { poi ->
+        selectedCategory == "all" || poi.category.lowercase() == selectedCategory
+    }
+    val sortedPois = if (currentLocation != null) {
+        filteredPois.map { poi ->
+            val distanceMeters = NavigationUtils.calculateDistanceMeters(
+                currentLocation,
+                Point.fromLngLat(poi.lng, poi.lat)
+            )
+            PoiDistance(poi, distanceMeters)
+        }.sortedBy { it.distanceMeters }
+    } else {
+        filteredPois.map { poi -> PoiDistance(poi, null) }
+            .sortedByDescending { it.poi.timestamp }
+    }
 
     LaunchedEffect(searchQuery) {
         val query = searchQuery.trim()
@@ -153,9 +185,9 @@ fun RouteOverviewScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (!showSearchResults) {
-                GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
-                    Column(modifier = Modifier.padding(12.dp)) {
+                if (!showSearchResults) {
+                    GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
+                        Column(modifier = Modifier.padding(12.dp)) {
                         OutlinedTextField(
                             value = poiName,
                             onValueChange = { poiName = it },
@@ -164,19 +196,34 @@ fun RouteOverviewScreen(
                             singleLine = true
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = poiCategory,
-                            onValueChange = { poiCategory = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("Category (optional)") },
-                            singleLine = true
+                        Text(
+                            text = "Category",
+                            color = WayyColors.TextSecondary,
+                            fontSize = 12.sp
                         )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(poiCategoryOptions) { option ->
+                                FilterChip(
+                                    selected = poiCategory == option.id,
+                                    onClick = { poiCategory = option.id },
+                                    label = { Text(option.label) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = option.icon,
+                                            contentDescription = null,
+                                            tint = option.color
+                                        )
+                                    }
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.height(8.dp))
                         Button(
                             onClick = {
                                 viewModel.addLocalPoi(poiName.trim(), poiCategory.trim())
                                 poiName = ""
-                                poiCategory = ""
+                                poiCategory = "general"
                             },
                             enabled = poiName.isNotBlank(),
                             modifier = Modifier.align(Alignment.End)
@@ -184,9 +231,29 @@ fun RouteOverviewScreen(
                             Text("Save POI")
                         }
                     }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(0.9f),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(poiCategoryFilters) { option ->
+                            FilterChip(
+                                selected = selectedCategory == option.id,
+                                onClick = { selectedCategory = option.id },
+                                label = { Text(option.label) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = option.icon,
+                                        contentDescription = null,
+                                        tint = option.color
+                                    )
+                                }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
-                Spacer(modifier = Modifier.height(16.dp))
-            }
 
             searchError?.let { message ->
                 Text(
@@ -228,7 +295,7 @@ fun RouteOverviewScreen(
                         }
                     }
                 } else {
-                    if (localPois.isEmpty()) {
+                    if (sortedPois.isEmpty()) {
                         item {
                             Text(
                                 text = "No local POIs yet",
@@ -237,20 +304,61 @@ fun RouteOverviewScreen(
                             )
                         }
                     } else {
-                        items(localPois) { poi ->
-                            val distance = currentLocation?.let { location ->
-                                NavigationUtils.formatDistance(
-                                    NavigationUtils.calculateDistanceMeters(
-                                        location,
-                                        Point.fromLngLat(poi.lng, poi.lat)
+                        items(sortedPois, key = { it.poi.id }) { entry ->
+                            val poi = entry.poi
+                            val distanceText = entry.distanceMeters?.let {
+                                NavigationUtils.formatDistance(it)
+                            } ?: "Select"
+                            val dismissState = rememberDismissState(
+                                confirmStateChange = { value ->
+                                    if (value == DismissValue.DismissedToEnd ||
+                                        value == DismissValue.DismissedToStart
+                                    ) {
+                                        viewModel.removeLocalPoi(poi.id)
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                            )
+                            SwipeToDismiss(
+                                state = dismissState,
+                                directions = setOf(
+                                    DismissDirection.EndToStart,
+                                    DismissDirection.StartToEnd
+                                ),
+                                background = {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth(0.9f)
+                                            .height(80.dp)
+                                            .background(WayyColors.Error.copy(alpha = 0.2f))
+                                            .padding(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete",
+                                            tint = WayyColors.Error
+                                        )
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete",
+                                            tint = WayyColors.Error
+                                        )
+                                    }
+                                },
+                                dismissContent = {
+                                    RecentRouteCard(
+                                        name = poi.name,
+                                        address = poiCategoryLabel(poi.category),
+                                        distance = distanceText,
+                                        onClick = { onPoiSelected(poi) },
+                                        leadingIcon = poiCategoryIcon(poi.category),
+                                        accentColor = poiCategoryColor(poi.category)
                                     )
-                                )
-                            } ?: ""
-                            RecentRouteCard(
-                                name = poi.name,
-                                address = poi.category.ifBlank { "POI" },
-                                distance = if (distance.isEmpty()) "Select" else distance,
-                                onClick = { onPoiSelected(poi) }
+                                }
                             )
                         }
                     }
@@ -313,7 +421,9 @@ fun RecentRouteCard(
     name: String,
     address: String,
     distance: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    leadingIcon: ImageVector? = null,
+    accentColor: Color = WayyColors.PrimaryLime
 ) {
     Card(
         onClick = onClick,
@@ -336,27 +446,78 @@ fun RecentRouteCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = name,
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = address,
-                    color = WayyColors.TextSecondary,
-                    fontSize = 13.sp
-                )
+                if (leadingIcon != null) {
+                    Icon(
+                        imageVector = leadingIcon,
+                        contentDescription = null,
+                        tint = accentColor,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = name,
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = address,
+                        color = WayyColors.TextSecondary,
+                        fontSize = 13.sp
+                    )
+                }
             }
             Text(
                 text = distance,
-                color = WayyColors.PrimaryLime,
+                color = accentColor,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
         }
     }
+}
+
+private data class PoiDistance(
+    val poi: LocalPoiItem,
+    val distanceMeters: Double?
+)
+
+private data class PoiCategoryOption(
+    val id: String,
+    val label: String,
+    val icon: ImageVector,
+    val color: Color
+)
+
+private val poiCategoryOptions = listOf(
+    PoiCategoryOption("gas", "Gas", Icons.Default.LocalGasStation, WayyColors.PrimaryOrange),
+    PoiCategoryOption("food", "Food", Icons.Default.Restaurant, WayyColors.PrimaryLime),
+    PoiCategoryOption("parking", "Parking", Icons.Default.LocalParking, WayyColors.PrimaryCyan),
+    PoiCategoryOption("lodging", "Lodging", Icons.Default.Hotel, WayyColors.PrimaryPurple),
+    PoiCategoryOption("general", "General", Icons.Default.Place, WayyColors.Info)
+)
+
+private val poiCategoryFilters = listOf(
+    PoiCategoryOption("all", "All", Icons.Default.Place, WayyColors.TextSecondary)
+) + poiCategoryOptions
+
+private fun poiCategoryLabel(category: String): String {
+    return poiCategoryOptions.firstOrNull { it.id == category.lowercase() }?.label ?: "General"
+}
+
+private fun poiCategoryIcon(category: String): ImageVector {
+    return poiCategoryOptions.firstOrNull { it.id == category.lowercase() }?.icon
+        ?: Icons.Default.Place
+}
+
+private fun poiCategoryColor(category: String): Color {
+    return poiCategoryOptions.firstOrNull { it.id == category.lowercase() }?.color
+        ?: WayyColors.Info
 }

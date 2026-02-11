@@ -12,15 +12,35 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Hotel
+import androidx.compose.material.icons.filled.LocalGasStation
+import androidx.compose.material.icons.filled.LocalParking
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.ReportProblem
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -35,14 +55,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import android.util.Log
+import androidx.compose.runtime.rememberUpdatedState
 import com.wayy.data.sensor.LocationManager
+import com.wayy.data.repository.LocalPoiItem
 import com.wayy.map.MapLibreManager
 import com.wayy.map.MapViewAutoLifecycle
 import com.wayy.map.MapStyleManager
 import com.wayy.map.WazeStyleManager
+import com.wayy.navigation.NavigationUtils
 import com.wayy.ui.components.common.TopBar
 import com.wayy.ui.components.glass.GlassIconButton
 import com.wayy.ui.components.navigation.ETACard
@@ -50,15 +74,19 @@ import com.wayy.ui.components.navigation.TurnBanner
 import com.wayy.ui.theme.WayyColors
 import com.wayy.viewmodel.NavigationState
 import com.wayy.viewmodel.NavigationViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
+import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
+import java.util.Locale
 
 /**
  * Minimal MVP navigation screen (map + GPS + search + route)
@@ -79,8 +107,28 @@ fun MainNavigationScreen(
     val locationManager = remember { LocationManager(context) }
     val localPois = viewModel.localPois?.collectAsState()?.value.orEmpty()
     val trafficReports = viewModel.trafficReports?.collectAsState()?.value.orEmpty()
+    val trafficSegments = viewModel.trafficSegments.collectAsState().value
+    val trafficSpeedMps by viewModel.trafficSpeedMps.collectAsState()
+    val trafficHistory = viewModel.trafficHistory.collectAsState().value
+    val latestPois = rememberUpdatedState(localPois)
+
+    fun resolveTrafficSeverity(speedMps: Double?): String {
+        val speed = speedMps ?: return "moderate"
+        return when {
+            speed >= 12.0 -> "fast"
+            speed >= 6.0 -> "moderate"
+            else -> "slow"
+        }
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
+
+    var selectedPoi by remember { mutableStateOf<LocalPoiItem?>(null) }
+    var showTrafficDialog by remember { mutableStateOf(false) }
+    var showAddPoiDialog by remember { mutableStateOf(false) }
+    var pendingPoiLocation by remember { mutableStateOf<Point?>(null) }
+    var addPoiName by remember { mutableStateOf("") }
+    var addPoiCategory by remember { mutableStateOf("general") }
 
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -201,10 +249,20 @@ fun MainNavigationScreen(
                         MapStyleManager.TRAFFIC_SOURCE_ID,
                         FeatureCollection.fromFeatures(emptyArray())
                     )
+                    val trafficIntensitySource = GeoJsonSource(
+                        MapStyleManager.TRAFFIC_INTENSITY_SOURCE_ID,
+                        FeatureCollection.fromFeatures(emptyArray())
+                    )
                     map.style?.addSource(poiSource)
                     map.style?.addSource(trafficSource)
+                    map.style?.addSource(trafficIntensitySource)
                     mapStyleManager.addPoiLayer(map, MapStyleManager.POI_SOURCE_ID)
                     mapStyleManager.addTrafficLayer(map, MapStyleManager.TRAFFIC_SOURCE_ID)
+                    mapStyleManager.addTrafficPulseLayer(map, MapStyleManager.TRAFFIC_SOURCE_ID)
+                    mapStyleManager.addTrafficIntensityLayer(
+                        map,
+                        MapStyleManager.TRAFFIC_INTENSITY_SOURCE_ID
+                    )
 
                     uiState.currentLocation?.let { location ->
                         mapManager.updateUserLocation(
@@ -213,6 +271,28 @@ fun MainNavigationScreen(
                         mapManager.centerOnUserLocation(
                             LatLng(location.latitude(), location.longitude())
                         )
+                    }
+
+                    map.addOnMapClickListener { latLng ->
+                        val screenPoint = map.projection.toScreenLocation(latLng)
+                        val features = map.queryRenderedFeatures(
+                            screenPoint,
+                            MapStyleManager.POI_LAYER_ID
+                        )
+                        val poiId = features.firstOrNull()?.getStringProperty("id")
+                        val match = poiId?.let { id ->
+                            latestPois.value.firstOrNull { poi -> poi.id == id }
+                        }
+                        selectedPoi = match
+                        match != null
+                    }
+
+                    map.addOnMapLongClickListener { latLng ->
+                        pendingPoiLocation = Point.fromLngLat(latLng.longitude, latLng.latitude)
+                        addPoiName = ""
+                        addPoiCategory = "general"
+                        showAddPoiDialog = true
+                        true
                     }
                 }
             }
@@ -224,8 +304,9 @@ fun MainNavigationScreen(
             )?.let { source ->
                 val features = localPois.map { poi ->
                     Feature.fromGeometry(Point.fromLngLat(poi.lng, poi.lat)).apply {
+                        addStringProperty("id", poi.id)
                         addStringProperty("name", poi.name)
-                        addStringProperty("category", poi.category)
+                        addStringProperty("category", poi.category.lowercase())
                     }
                 }
                 source.setGeoJson(FeatureCollection.fromFeatures(features))
@@ -238,7 +319,48 @@ fun MainNavigationScreen(
             )?.let { source ->
                 val features = trafficReports.map { report ->
                     Feature.fromGeometry(Point.fromLngLat(report.lng, report.lat)).apply {
-                        addStringProperty("severity", report.severity)
+                        val severity = when (report.severity.lowercase()) {
+                            "heavy", "slow", "stopped" -> "heavy"
+                            "light", "clear" -> "light"
+                            "moderate" -> "moderate"
+                            else -> "moderate"
+                        }
+                        addStringProperty("severity", severity)
+                    }
+                }
+                source.setGeoJson(FeatureCollection.fromFeatures(features))
+            }
+        }
+
+        LaunchedEffect(Unit) {
+            var expanded = false
+            while (true) {
+                val radius = if (expanded) 16f else 10f
+                val opacity = if (expanded) 0.25f else 0.5f
+                mapManager.getMapLibreMap()?.style?.getLayerAs<CircleLayer>(
+                    MapStyleManager.TRAFFIC_PULSE_LAYER_ID
+                )?.setProperties(
+                    PropertyFactory.circleRadius(radius),
+                    PropertyFactory.circleOpacity(opacity)
+                )
+                expanded = !expanded
+                delay(800)
+            }
+        }
+
+        LaunchedEffect(trafficSegments) {
+            mapManager.getMapLibreMap()?.style?.getSourceAs<GeoJsonSource>(
+                MapStyleManager.TRAFFIC_INTENSITY_SOURCE_ID
+            )?.let { source ->
+                val features = trafficSegments.map { segment ->
+                    val line = LineString.fromLngLats(
+                        listOf(
+                            Point.fromLngLat(segment.startLng, segment.startLat),
+                            Point.fromLngLat(segment.endLng, segment.endLat)
+                        )
+                    )
+                    Feature.fromGeometry(line).apply {
+                        addStringProperty("severity", segment.severity)
                     }
                 }
                 source.setGeoJson(FeatureCollection.fromFeatures(features))
@@ -250,6 +372,7 @@ fun MainNavigationScreen(
                 val style = map.style ?: return@let
 
                 runCatching { style.removeLayer(MapStyleManager.ROUTE_LAYER_ID) }
+                runCatching { style.removeLayer(MapStyleManager.ROUTE_TRAFFIC_LAYER_ID) }
                 runCatching { style.removeSource(MapStyleManager.ROUTE_SOURCE_ID) }
 
                 val route = uiState.currentRoute ?: return@let
@@ -257,10 +380,13 @@ fun MainNavigationScreen(
                     Point.fromLngLat(point.longitude(), point.latitude())
                 }
                 val lineString = LineString.fromLngLats(coordinates)
-                val feature = Feature.fromGeometry(lineString)
+                val feature = Feature.fromGeometry(lineString).apply {
+                    addStringProperty("trafficSeverity", resolveTrafficSeverity(trafficSpeedMps))
+                }
                 val source = GeoJsonSource(MapStyleManager.ROUTE_SOURCE_ID, feature)
                 style.addSource(source)
                 mapStyleManager.addRouteLayer(map, MapStyleManager.ROUTE_SOURCE_ID)
+                mapStyleManager.addRouteTrafficLayer(map, MapStyleManager.ROUTE_SOURCE_ID)
 
                 val boundsBuilder = LatLngBounds.Builder()
                 route.geometry.forEach { point ->
@@ -270,12 +396,239 @@ fun MainNavigationScreen(
             }
         }
 
+        LaunchedEffect(trafficSpeedMps, uiState.currentRoute) {
+            val route = uiState.currentRoute ?: return@LaunchedEffect
+            mapManager.getMapLibreMap()?.style?.getSourceAs<GeoJsonSource>(
+                MapStyleManager.ROUTE_SOURCE_ID
+            )?.let { source ->
+                val coordinates = route.geometry.map { point ->
+                    Point.fromLngLat(point.longitude(), point.latitude())
+                }
+                val lineString = LineString.fromLngLats(coordinates)
+                val feature = Feature.fromGeometry(lineString).apply {
+                    addStringProperty("trafficSeverity", resolveTrafficSeverity(trafficSpeedMps))
+                }
+                source.setGeoJson(feature)
+            }
+        }
+
         TopBar(
             onMenuClick = onMenuClick,
             onSettingsClick = onSettingsClick,
             isScanningActive = false,
             modifier = Modifier.align(Alignment.TopCenter)
         )
+
+        selectedPoi?.let { poi ->
+            val distanceText = uiState.currentLocation?.let { location ->
+                NavigationUtils.formatDistance(
+                    NavigationUtils.calculateDistanceMeters(
+                        location,
+                        Point.fromLngLat(poi.lng, poi.lat)
+                    )
+                )
+            } ?: "n/a"
+            Card(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 20.dp, vertical = 90.dp),
+                colors = CardDefaults.cardColors(containerColor = WayyColors.BgSecondary)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = poiCategoryIcon(poi.category),
+                                contentDescription = null,
+                                tint = poiCategoryColor(poi.category)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = poi.name, color = Color.White)
+                        }
+                        IconButton(onClick = { selectedPoi = null }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = Color.White
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = poiCategoryLabel(poi.category),
+                        color = WayyColors.TextSecondary
+                    )
+                    Text(
+                        text = "Distance: $distanceText",
+                        color = WayyColors.TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            viewModel.startNavigation(
+                                Point.fromLngLat(poi.lng, poi.lat),
+                                poi.name
+                            )
+                            selectedPoi = null
+                        },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text("Navigate")
+                    }
+                }
+            }
+        }
+
+        if (uiState.isNavigating) {
+            val trafficAvgMph = trafficSpeedMps?.let { it * 2.23694 }
+            val currentStreet = uiState.currentStreet.ifBlank { "Unknown" }
+            val reportCount = trafficReports.count { report ->
+                report.streetName?.equals(currentStreet, ignoreCase = true) == true
+            }
+            val historyBars = buildTrafficHistoryBars(trafficHistory)
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 80.dp, end = 16.dp)
+                    .background(
+                        color = WayyColors.BgSecondary.copy(alpha = 0.9f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .padding(12.dp)
+            ) {
+                Text(text = "Traffic", color = Color.White)
+                Text(text = "Street: $currentStreet", color = Color.White)
+                Text(
+                    text = "Current: ${
+                        String.format(Locale.US, "%.0f mph", uiState.currentSpeed)
+                    }",
+                    color = Color.White
+                )
+                Text(
+                    text = "Avg: ${
+                        trafficAvgMph?.let {
+                            String.format(Locale.US, "%.0f mph", it)
+                        } ?: "n/a"
+                    }",
+                    color = Color.White
+                )
+                Text(
+                    text = "Reports: $reportCount",
+                    color = Color.White
+                )
+                if (historyBars.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "History (24h)",
+                        color = WayyColors.TextSecondary,
+                        fontSize = 12.sp
+                    )
+                    TrafficHistoryChart(historyBars)
+                }
+            }
+        }
+
+        if (showTrafficDialog) {
+            AlertDialog(
+                onDismissRequest = { showTrafficDialog = false },
+                title = { Text(text = "Report traffic", color = Color.White) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(text = "Select severity", color = WayyColors.TextSecondary)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("light", "moderate", "heavy").forEach { level ->
+                                Button(
+                                    onClick = {
+                                        viewModel.reportTraffic(level)
+                                        showTrafficDialog = false
+                                    }
+                                ) {
+                                    Text(level.replaceFirstChar { it.titlecase() })
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                containerColor = WayyColors.BgSecondary,
+                titleContentColor = Color.White,
+                textContentColor = WayyColors.TextSecondary
+            )
+        }
+
+        if (showAddPoiDialog && pendingPoiLocation != null) {
+            val categories = listOf("gas", "food", "parking", "lodging", "general")
+            AlertDialog(
+                onDismissRequest = {
+                    showAddPoiDialog = false
+                    pendingPoiLocation = null
+                },
+                title = { Text(text = "Add POI here", color = Color.White) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = addPoiName,
+                            onValueChange = { addPoiName = it },
+                            label = { Text("Name") },
+                            singleLine = true
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            categories.forEach { category ->
+                                Button(
+                                    onClick = { addPoiCategory = category },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (addPoiCategory == category) {
+                                            WayyColors.PrimaryLime
+                                        } else {
+                                            WayyColors.BgTertiary
+                                        }
+                                    )
+                                ) {
+                                    Text(category.replaceFirstChar { it.titlecase() })
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            pendingPoiLocation?.let { location ->
+                                viewModel.addLocalPoiAt(
+                                    addPoiName.trim(),
+                                    addPoiCategory,
+                                    location
+                                )
+                            }
+                            addPoiName = ""
+                            addPoiCategory = "general"
+                            showAddPoiDialog = false
+                            pendingPoiLocation = null
+                        },
+                        enabled = addPoiName.isNotBlank()
+                    ) {
+                        Text("Save")
+                    }
+                },
+                dismissButton = {
+                    Button(
+                        onClick = {
+                            showAddPoiDialog = false
+                            pendingPoiLocation = null
+                        }
+                    ) {
+                        Text("Cancel")
+                    }
+                },
+                containerColor = WayyColors.BgSecondary,
+                titleContentColor = Color.White,
+                textContentColor = WayyColors.TextSecondary
+            )
+        }
 
         AnimatedVisibility(
             visible = uiState.isNavigating,
@@ -335,7 +688,7 @@ fun MainNavigationScreen(
         }
 
         GlassIconButton(
-            onClick = { viewModel.reportTraffic() },
+            onClick = { showTrafficDialog = true },
             icon = Icons.Default.ReportProblem,
             contentDescription = "Report traffic",
             modifier = Modifier
@@ -344,4 +697,74 @@ fun MainNavigationScreen(
                 .size(48.dp)
         )
     }
+}
+
+@Composable
+private fun TrafficHistoryChart(bars: List<Double>) {
+    val max = bars.maxOrNull()?.takeIf { it > 0 } ?: return
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        bars.forEach { value ->
+            val heightRatio = (value / max).coerceIn(0.05, 1.0)
+            Spacer(
+                modifier = Modifier
+                    .width(8.dp)
+                    .height((48 * heightRatio).dp)
+                    .background(
+                        color = WayyColors.PrimaryCyan.copy(alpha = 0.85f),
+                        shape = RoundedCornerShape(4.dp)
+                    )
+            )
+        }
+    }
+}
+
+private fun buildTrafficHistoryBars(
+    history: List<NavigationViewModel.TrafficHistoryPoint>
+): List<Double> {
+    if (history.isEmpty()) return emptyList()
+    val now = System.currentTimeMillis()
+    val windowMs = 24 * 60 * 60 * 1000L
+    val bucketSizeMs = 4 * 60 * 60 * 1000L
+    val startMs = now - windowMs
+    val buckets = (0 until 6).map { index ->
+        val bucketStart = startMs + index * bucketSizeMs
+        val bucketEnd = bucketStart + bucketSizeMs
+        val speeds = history.filter { point ->
+            point.bucketStartMs in bucketStart until bucketEnd
+        }.map { it.averageSpeedMps }
+        if (speeds.isNotEmpty()) speeds.average() else 0.0
+    }
+    return buckets
+}
+
+private fun poiCategoryLabel(category: String): String {
+    return when (category.trim().lowercase()) {
+        "gas" -> "Gas"
+        "food" -> "Food"
+        "parking" -> "Parking"
+        "lodging" -> "Lodging"
+        else -> "General"
+    }
+}
+
+private fun poiCategoryIcon(category: String) = when (category.trim().lowercase()) {
+    "gas" -> Icons.Default.LocalGasStation
+    "food" -> Icons.Default.Restaurant
+    "parking" -> Icons.Default.LocalParking
+    "lodging" -> Icons.Default.Hotel
+    else -> Icons.Default.Place
+}
+
+private fun poiCategoryColor(category: String) = when (category.trim().lowercase()) {
+    "gas" -> WayyColors.PrimaryOrange
+    "food" -> WayyColors.PrimaryLime
+    "parking" -> WayyColors.PrimaryCyan
+    "lodging" -> WayyColors.PrimaryPurple
+    else -> WayyColors.Info
 }

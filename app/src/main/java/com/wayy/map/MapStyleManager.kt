@@ -2,6 +2,7 @@ package com.wayy.map
 
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.LineLayer
@@ -29,6 +30,7 @@ class MapStyleManager {
         // Style constants
         const val ROUTE_SOURCE_ID = "route-source"
         const val ROUTE_LAYER_ID = "route-layer"
+        const val ROUTE_TRAFFIC_LAYER_ID = "route-traffic-layer"
         const val ROUTE_ALTERNATE_SOURCE_ID = "route-alt-source"
         const val ROUTE_ALTERNATE_LAYER_ID = "route-alt-layer"
         const val LOCATION_SOURCE_ID = "location-source"
@@ -37,6 +39,17 @@ class MapStyleManager {
         const val POI_LAYER_ID = "poi-layer"
         const val TRAFFIC_SOURCE_ID = "traffic-source"
         const val TRAFFIC_LAYER_ID = "traffic-layer"
+        const val TRAFFIC_PULSE_LAYER_ID = "traffic-pulse-layer"
+        const val TRAFFIC_INTENSITY_SOURCE_ID = "traffic-intensity-source"
+        const val TRAFFIC_INTENSITY_LAYER_FAST_ID = "traffic-intensity-fast-layer"
+        const val TRAFFIC_INTENSITY_LAYER_MODERATE_ID = "traffic-intensity-moderate-layer"
+        const val TRAFFIC_INTENSITY_LAYER_SLOW_ID = "traffic-intensity-slow-layer"
+
+        private const val POI_GAS_COLOR = "#FB923C"
+        private const val POI_FOOD_COLOR = "#A3E635"
+        private const val POI_PARKING_COLOR = "#22D3EE"
+        private const val POI_LODGING_COLOR = "#A855F7"
+        private const val POI_DEFAULT_COLOR = "#3B82F6"
     }
 
     /**
@@ -111,6 +124,27 @@ class MapStyleManager {
         map.style?.addLayer(layer)
     }
 
+    fun addRouteTrafficLayer(map: MapLibreMap, sourceId: String = ROUTE_SOURCE_ID) {
+        val layer = LineLayer(ROUTE_TRAFFIC_LAYER_ID, sourceId).apply {
+            setProperties(
+                PropertyFactory.lineColor(
+                    Expression.match(
+                        Expression.get("trafficSeverity"),
+                        Expression.literal("#A3E635"),
+                        Expression.stop("slow", Expression.literal("#EF4444")),
+                        Expression.stop("moderate", Expression.literal("#FB923C")),
+                        Expression.stop("fast", Expression.literal("#A3E635"))
+                    )
+                ),
+                PropertyFactory.lineWidth(8f),
+                PropertyFactory.lineOpacity(0.55f),
+                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)
+            )
+        }
+        map.style?.addLayerBelow(layer, ROUTE_LAYER_ID)
+    }
+
     /**
      * Add alternate route layer (ghost route)
      */
@@ -171,7 +205,16 @@ class MapStyleManager {
         val layer = CircleLayer(POI_LAYER_ID, sourceId).apply {
             setProperties(
                 PropertyFactory.circleRadius(6f),
-                PropertyFactory.circleColor("#22D3EE"),
+                PropertyFactory.circleColor(
+                    Expression.match(
+                        Expression.downcase(Expression.get("category")),
+                        Expression.literal(POI_DEFAULT_COLOR),
+                        Expression.stop("gas", Expression.literal(POI_GAS_COLOR)),
+                        Expression.stop("food", Expression.literal(POI_FOOD_COLOR)),
+                        Expression.stop("parking", Expression.literal(POI_PARKING_COLOR)),
+                        Expression.stop("lodging", Expression.literal(POI_LODGING_COLOR))
+                    )
+                ),
                 PropertyFactory.circleStrokeColor("#FFFFFF"),
                 PropertyFactory.circleStrokeWidth(1.5f),
                 PropertyFactory.circleOpacity(0.9f)
@@ -184,13 +227,75 @@ class MapStyleManager {
         val layer = CircleLayer(TRAFFIC_LAYER_ID, sourceId).apply {
             setProperties(
                 PropertyFactory.circleRadius(7f),
-                PropertyFactory.circleColor("#FB923C"),
+                PropertyFactory.circleColor(
+                    Expression.match(
+                        Expression.downcase(Expression.get("severity")),
+                        Expression.literal("#FB923C"),
+                        Expression.stop("light", Expression.literal("#A3E635")),
+                        Expression.stop("moderate", Expression.literal("#FB923C")),
+                        Expression.stop("heavy", Expression.literal("#EF4444"))
+                    )
+                ),
                 PropertyFactory.circleStrokeColor("#FFFFFF"),
                 PropertyFactory.circleStrokeWidth(1.5f),
                 PropertyFactory.circleOpacity(0.85f)
             )
         }
         map.style?.addLayer(layer)
+    }
+
+    fun addTrafficPulseLayer(map: MapLibreMap, sourceId: String = TRAFFIC_SOURCE_ID) {
+        val layer = CircleLayer(TRAFFIC_PULSE_LAYER_ID, sourceId).apply {
+            setProperties(
+                PropertyFactory.circleRadius(12f),
+                PropertyFactory.circleColor("#EF4444"),
+                PropertyFactory.circleOpacity(0.4f)
+            )
+            setFilter(Expression.eq(Expression.downcase(Expression.get("severity")), "heavy"))
+        }
+        map.style?.addLayer(layer)
+    }
+
+    fun addTrafficIntensityLayer(
+        map: MapLibreMap,
+        sourceId: String = TRAFFIC_INTENSITY_SOURCE_ID
+    ) {
+        val slowLayer = LineLayer(TRAFFIC_INTENSITY_LAYER_SLOW_ID, sourceId).apply {
+            setProperties(
+                PropertyFactory.lineColor("#EF4444"),
+                PropertyFactory.lineWidth(6f),
+                PropertyFactory.lineOpacity(0.8f),
+                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)
+            )
+            setFilter(Expression.eq(Expression.get("severity"), "slow"))
+        }
+
+        val moderateLayer = LineLayer(TRAFFIC_INTENSITY_LAYER_MODERATE_ID, sourceId).apply {
+            setProperties(
+                PropertyFactory.lineColor("#FB923C"),
+                PropertyFactory.lineWidth(6f),
+                PropertyFactory.lineOpacity(0.8f),
+                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)
+            )
+            setFilter(Expression.eq(Expression.get("severity"), "moderate"))
+        }
+
+        val fastLayer = LineLayer(TRAFFIC_INTENSITY_LAYER_FAST_ID, sourceId).apply {
+            setProperties(
+                PropertyFactory.lineColor("#A3E635"),
+                PropertyFactory.lineWidth(6f),
+                PropertyFactory.lineOpacity(0.8f),
+                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)
+            )
+            setFilter(Expression.eq(Expression.get("severity"), "fast"))
+        }
+
+        map.style?.addLayer(slowLayer)
+        map.style?.addLayer(moderateLayer)
+        map.style?.addLayer(fastLayer)
     }
 
     /**
