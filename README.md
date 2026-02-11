@@ -109,10 +109,11 @@ The app requires the following permissions:
 - **Route history** persistence + recent routes list
 - **Local POI + traffic reporting** (stored on-device)
 - **Trip telemetry logging** (Room DB: GPS samples + per-street segment timing)
+- **Local traffic stats aggregation** (per-street time buckets for ETA tuning)
 
 ## Current MVP Status (Pending)
 
-- **Traffic intensity aggregation** from logged segments for ETA modeling
+- **Traffic intensity visualization** + validation tooling
 - **Offline maps** and additional traffic/POI enhancements
 
 ## Future Enhancements

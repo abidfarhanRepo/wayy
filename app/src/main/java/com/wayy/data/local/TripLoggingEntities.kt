@@ -49,3 +49,18 @@ data class StreetSegmentEntity(
     val endLat: Double,
     val endLng: Double
 )
+
+@Entity(
+    tableName = "traffic_stats",
+    primaryKeys = ["streetName", "bucketStartMs"]
+)
+data class TrafficStatEntity(
+    val streetName: String,
+    val bucketStartMs: Long,
+    val totalDistanceMeters: Double,
+    val totalDurationMs: Long,
+    val totalSampleCount: Int,
+    val totalSegmentCount: Int,
+    val averageSpeedMps: Double,
+    val lastUpdated: Long
+)

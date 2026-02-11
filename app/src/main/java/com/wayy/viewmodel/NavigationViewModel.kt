@@ -84,6 +84,7 @@ class NavigationViewModel(
 
     private var activeTripId: String? = null
     private var streetSegmentTracker: StreetSegmentTracker? = null
+    private var lastTrafficLookupKey: String? = null
 
     private val _uiState = MutableStateFlow(NavigationUiState())
     val uiState: StateFlow<NavigationUiState> = _uiState.asStateFlow()
@@ -93,6 +94,9 @@ class NavigationViewModel(
 
     private val _bearing = MutableStateFlow(0f)
     val bearing: StateFlow<Float> = _bearing.asStateFlow()
+
+    private val _trafficSpeedMps = MutableStateFlow<Double?>(null)
+    val trafficSpeedMps: StateFlow<Double?> = _trafficSpeedMps.asStateFlow()
 
     private val _destination = MutableStateFlow<Point?>(null)
     val destination: StateFlow<Point?> = _destination.asStateFlow()
@@ -443,13 +447,20 @@ class NavigationViewModel(
         val currentInstruction = turnProvider.getCurrentInstruction(location, route, newStepIndex)
         val nextInstruction = turnProvider.getNextInstruction(route, newStepIndex)
 
+        refreshTrafficStatsIfNeeded(currentInstruction?.streetName.orEmpty())
+
         val (closestIndex, _) = NavigationUtils.findClosestPointOnRoute(location, route.geometry)
         val remainingMeters = NavigationUtils.calculateRemainingDistance(
             location,
             route.geometry,
             closestIndex
         )
-        val etaSeconds = calculateEtaSeconds(route, remainingMeters, speed)
+        val etaSeconds = calculateEtaSeconds(
+            route,
+            remainingMeters,
+            speed,
+            _trafficSpeedMps.value
+        )
 
         _uiState.value = _uiState.value.copy(
             currentStepIndex = newStepIndex,
@@ -467,20 +478,50 @@ class NavigationViewModel(
         )
     }
 
-    private fun calculateEtaSeconds(route: Route, remainingMeters: Double, speedMph: Float): Double {
+    private fun calculateEtaSeconds(
+        route: Route,
+        remainingMeters: Double,
+        speedMph: Float,
+        trafficSpeedMps: Double?
+    ): Double {
         val speedMps = speedMph / 2.23694f
-        if (speedMps >= 1f) {
-            return remainingMeters / speedMps
-        }
-        val averageSpeedMps = if (route.duration > 0) {
+        val routeAverageMps = if (route.duration > 0) {
             route.distance / route.duration
         } else {
             0.0
         }
-        return if (averageSpeedMps > 0) {
-            remainingMeters / averageSpeedMps
+        val trafficMps = trafficSpeedMps?.takeIf { it > 0 }
+        val baselineMps = trafficMps ?: routeAverageMps
+        val effectiveMps = when {
+            speedMps >= 1f && baselineMps > 0 -> (speedMps + baselineMps) / 2.0
+            speedMps >= 1f -> speedMps.toDouble()
+            baselineMps > 0 -> baselineMps
+            else -> 0.0
+        }
+        return if (effectiveMps > 0) {
+            remainingMeters / effectiveMps
         } else {
             route.duration
+        }
+    }
+
+    private fun refreshTrafficStatsIfNeeded(streetName: String) {
+        val manager = tripLoggingManager ?: return
+        val normalizedStreet = streetName.ifBlank { "Unknown" }
+        val bucketStartMs = TripLoggingManager.bucketStart(System.currentTimeMillis())
+        val key = "${normalizedStreet}_$bucketStartMs"
+        if (key == lastTrafficLookupKey) return
+        lastTrafficLookupKey = key
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                _trafficSpeedMps.value = manager.getTrafficSpeedMps(
+                    normalizedStreet,
+                    bucketStartMs
+                )
+            } catch (e: Exception) {
+                Log.e("WayyTrip", "Traffic stat lookup failed", e)
+                _trafficSpeedMps.value = null
+            }
         }
     }
 

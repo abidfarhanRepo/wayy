@@ -15,6 +15,14 @@ class TripLoggingManager(context: Context) {
 
     private val dao = db.tripLoggingDao()
 
+    companion object {
+        const val TRAFFIC_BUCKET_MS = 15 * 60 * 1000L
+
+        fun bucketStart(timestamp: Long): Long {
+            return (timestamp / TRAFFIC_BUCKET_MS) * TRAFFIC_BUCKET_MS
+        }
+    }
+
     fun generateTripId(
         startLat: Double,
         startLng: Double,
@@ -115,5 +123,35 @@ class TripLoggingManager(context: Context) {
                 endLng = endPoint.longitude()
             )
         )
+
+        val bucketStartMs = bucketStart(startTime)
+        val existing = dao.getTrafficStat(streetName, bucketStartMs)
+        val totalDistance = (existing?.totalDistanceMeters ?: 0.0) + distanceMeters
+        val totalDuration = (existing?.totalDurationMs ?: 0L) + durationMs
+        val totalSamples = (existing?.totalSampleCount ?: 0) + sampleCount
+        val totalSegments = (existing?.totalSegmentCount ?: 0) + 1
+        val averageSpeed = if (totalDuration > 0L) {
+            totalDistance / (totalDuration / 1000.0)
+        } else {
+            0.0
+        }
+        dao.upsertTrafficStat(
+            TrafficStatEntity(
+                streetName = streetName,
+                bucketStartMs = bucketStartMs,
+                totalDistanceMeters = totalDistance,
+                totalDurationMs = totalDuration,
+                totalSampleCount = totalSamples,
+                totalSegmentCount = totalSegments,
+                averageSpeedMps = averageSpeed,
+                lastUpdated = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun getTrafficSpeedMps(streetName: String, bucketStartMs: Long): Double? {
+        return dao.getTrafficStat(streetName, bucketStartMs)
+            ?.averageSpeedMps
+            ?.takeIf { it > 0 }
     }
 }

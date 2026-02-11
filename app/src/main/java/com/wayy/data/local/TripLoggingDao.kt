@@ -21,4 +21,13 @@ interface TripLoggingDao {
 
     @Insert
     suspend fun insertStreetSegment(segment: StreetSegmentEntity)
+
+    @Query(
+        "SELECT * FROM traffic_stats WHERE streetName = :streetName " +
+            "AND bucketStartMs = :bucketStartMs LIMIT 1"
+    )
+    suspend fun getTrafficStat(streetName: String, bucketStartMs: Long): TrafficStatEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertTrafficStat(stat: TrafficStatEntity)
 }

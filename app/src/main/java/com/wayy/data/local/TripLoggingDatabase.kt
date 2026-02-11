@@ -7,9 +7,10 @@ import androidx.room.RoomDatabase
     entities = [
         TripSessionEntity::class,
         GpsSampleEntity::class,
-        StreetSegmentEntity::class
+        StreetSegmentEntity::class,
+        TrafficStatEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class TripLoggingDatabase : RoomDatabase() {
