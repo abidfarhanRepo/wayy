@@ -87,6 +87,7 @@ import com.wayy.ui.components.camera.TurnArrowOverlay
 import com.wayy.ui.components.common.QuickActionsBar
 import com.wayy.ui.components.common.TopBar
 import com.wayy.ui.components.glass.GlassIconButton
+import com.wayy.ui.components.gauges.SpeedometerSmall
 import com.wayy.ui.components.navigation.TurnBanner
 import com.wayy.ui.theme.WayyColors
 import com.wayy.viewmodel.ARMode
@@ -872,13 +873,20 @@ fun MainNavigationScreen(
             )
         }
 
+        SpeedometerSmall(
+            speed = uiState.currentSpeed,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .navigationBarsPadding()
+                .padding(start = 16.dp, bottom = 88.dp)
+        )
+
         QuickActionsBar(
             isNavigating = uiState.isNavigating,
-            isScanning = uiState.isScanning,
             isARActive = uiState.arMode != ARMode.DISABLED,
             is3DActive = uiState.is3DView,
+            onMenuClick = onMenuClick,
             onNavigateToggle = { viewModel.toggleNavigation() },
-            onScanToggle = { viewModel.toggleScanning() },
             onARModeToggle = { viewModel.toggleARMode() },
             on3DViewToggle = { viewModel.toggle3DView() },
             modifier = Modifier
