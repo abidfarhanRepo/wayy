@@ -24,7 +24,7 @@ A modern Android navigation app with glassmorphism UI, real-time speedometer, an
 ```
 app/src/main/java/com/wayy/
 ├── MainActivity.kt              # Main entry point
-├── WayyApp.kt              # Application class
+├── WayyApp.kt                  # Application class
 ├── ui/
 │   ├── theme/                  # Colors, typography, theme
 │   ├── components/
@@ -36,7 +36,8 @@ app/src/main/java/com/wayy/
 ├── viewmodel/                  # NavigationViewModel
 ├── data/
 │   ├── model/                  # Route data models
-│   ├── repository/             # RouteRepository (OSRM)
+│   ├── repository/             # RouteRepository + DataStore managers
+│   ├── local/                  # Room trip logging (GPS + street segments)
 │   └── sensor/                 # LocationManager
 └── map/
     ├── MapLibreManager         # Map operations
@@ -105,11 +106,14 @@ The app requires the following permissions:
 - **Destination search** via Nominatim (typed query → results list)
 - **Routing + navigation** via OSRM (route line + turn banner + ETA/remaining distance)
 - **Minimal navigation shell** focused on function (demo screens removed)
+- **Route history** persistence + recent routes list
+- **Local POI + traffic reporting** (stored on-device)
+- **Trip telemetry logging** (Room DB: GPS samples + per-street segment timing)
 
 ## Current MVP Status (Pending)
 
-- **Route history** persistence + recent routes list
-- **Offline maps** and traffic/POI enhancements
+- **Traffic intensity aggregation** from logged segments for ETA modeling
+- **Offline maps** and additional traffic/POI enhancements
 
 ## Future Enhancements
 

@@ -146,7 +146,12 @@ fun MainNavigationScreen(
                         "WayyLocation",
                         "Live update lat=${update.location.latitude()}, lon=${update.location.longitude()}"
                     )
-                    viewModel.updateLocation(update.location, update.speed, update.bearing)
+                    viewModel.updateLocation(
+                        update.location,
+                        update.speed,
+                        update.bearing,
+                        update.accuracy
+                    )
                     mapManager.updateUserLocation(
                         LatLng(update.location.latitude(), update.location.longitude()),
                         update.bearing

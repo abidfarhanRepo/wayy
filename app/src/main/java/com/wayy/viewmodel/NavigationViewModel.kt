@@ -1,7 +1,9 @@
 package com.wayy.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.wayy.data.local.TripLoggingManager
 import com.wayy.data.repository.LocalPoiItem
 import com.wayy.data.repository.LocalPoiManager
 import com.wayy.data.repository.TrafficReportItem
@@ -17,6 +19,7 @@ import com.wayy.navigation.RerouteUtils
 import com.wayy.navigation.TurnInstruction
 import com.wayy.navigation.TurnInstructionProvider
 import com.wayy.ui.components.navigation.Direction
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -73,10 +76,14 @@ class NavigationViewModel(
     private val rerouteUtils: RerouteUtils = RerouteUtils(),
     private val routeHistoryManager: RouteHistoryManager? = null,
     private val localPoiManager: LocalPoiManager? = null,
-    private val trafficReportManager: TrafficReportManager? = null
+    private val trafficReportManager: TrafficReportManager? = null,
+    private val tripLoggingManager: TripLoggingManager? = null
 ) : ViewModel() {
 
     var isDemoMode: Boolean = false
+
+    private var activeTripId: String? = null
+    private var streetSegmentTracker: StreetSegmentTracker? = null
 
     private val _uiState = MutableStateFlow(NavigationUiState())
     val uiState: StateFlow<NavigationUiState> = _uiState.asStateFlow()
@@ -115,6 +122,16 @@ class NavigationViewModel(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList()
+    )
+
+    private data class StreetSegmentTracker(
+        val streetName: String,
+        val startTime: Long,
+        var lastTime: Long,
+        val startPoint: Point,
+        var lastPoint: Point,
+        var distanceMeters: Double,
+        var sampleCount: Int
     )
 
     fun startNavigation(destination: Point, destinationName: String? = null) {
@@ -296,9 +313,14 @@ class NavigationViewModel(
                 routeHistoryManager.addRoute(item)
             }
         }
+
+        if (startLocation != null) {
+            startTripLogging(startLocation, destination, destinationName)
+        }
     }
 
     fun stopNavigation() {
+        finalizeTrip(_uiState.value.currentLocation)
         _destination.value = null
         rerouteUtils.resetState()
 
@@ -352,7 +374,12 @@ class NavigationViewModel(
         _uiState.value = _uiState.value.copy(speedLimitMph = limitMph)
     }
 
-    fun updateLocation(location: Point, speed: Float = 0f, bearing: Float = 0f) {
+    fun updateLocation(
+        location: Point,
+        speed: Float = 0f,
+        bearing: Float = 0f,
+        accuracy: Float = 0f
+    ) {
         _uiState.value = _uiState.value.copy(
             currentLocation = location,
             currentBearing = bearing,
@@ -363,6 +390,7 @@ class NavigationViewModel(
 
         if (_uiState.value.isNavigating) {
             updateNavigationProgress(location, speed)
+            logTripSample(location, speed, bearing, accuracy)
         }
     }
 
@@ -371,7 +399,7 @@ class NavigationViewModel(
         val destination = _destination.value ?: return
 
         if (rerouteUtils.isApproachingDestination(location, destination)) {
-            handleArrival()
+            handleArrival(location)
             return
         }
 
@@ -456,7 +484,8 @@ class NavigationViewModel(
         }
     }
 
-    private fun handleArrival() {
+    private fun handleArrival(location: Point) {
+        finalizeTrip(location)
         _uiState.value = _uiState.value.copy(
             navigationState = NavigationState.Arrived,
             isNavigating = false,
@@ -467,6 +496,150 @@ class NavigationViewModel(
             remainingDistance = "0m",
             remainingDistanceMeters = 0.0
         )
+    }
+
+    private fun startTripLogging(
+        startLocation: Point,
+        destination: Point,
+        destinationName: String?
+    ) {
+        val manager = tripLoggingManager ?: return
+        val tripId = manager.generateTripId(
+            startLat = startLocation.latitude(),
+            startLng = startLocation.longitude(),
+            endLat = destination.latitude(),
+            endLng = destination.longitude()
+        )
+        activeTripId = tripId
+        streetSegmentTracker = null
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                manager.startTrip(tripId, startLocation, destination, destinationName)
+            } catch (e: Exception) {
+                Log.e("WayyTrip", "Trip start failed", e)
+                _uiState.value = _uiState.value.copy(
+                    error = "Trip logging error: ${e.message ?: "unknown"}"
+                )
+            }
+        }
+    }
+
+    private fun logTripSample(
+        location: Point,
+        speedMph: Float,
+        bearing: Float,
+        accuracy: Float
+    ) {
+        val tripId = activeTripId ?: return
+        val manager = tripLoggingManager ?: return
+        val timestamp = System.currentTimeMillis()
+        val speedMps = speedMph / 2.23694f
+        val streetName = _uiState.value.currentStreet.ifBlank { "Unknown" }
+        val stepIndex = _uiState.value.currentStepIndex
+        val remainingDistanceMeters = _uiState.value.remainingDistanceMeters
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                manager.logGpsSample(
+                    tripId = tripId,
+                    location = location,
+                    timestamp = timestamp,
+                    speedMps = speedMps,
+                    bearing = bearing,
+                    accuracy = accuracy,
+                    streetName = streetName,
+                    stepIndex = stepIndex,
+                    remainingDistanceMeters = remainingDistanceMeters,
+                    isNavigating = true
+                )
+            } catch (e: Exception) {
+                Log.e("WayyTrip", "GPS sample logging failed", e)
+                _uiState.value = _uiState.value.copy(
+                    error = "Trip logging error: ${e.message ?: "unknown"}"
+                )
+            }
+        }
+
+        updateStreetSegment(tripId, location, streetName, timestamp)
+    }
+
+    private fun updateStreetSegment(
+        tripId: String,
+        location: Point,
+        streetName: String,
+        timestamp: Long
+    ) {
+        val normalizedStreet = streetName.ifBlank { "Unknown" }
+        val tracker = streetSegmentTracker
+        if (tracker == null || tracker.streetName != normalizedStreet) {
+            tracker?.let { finalizeStreetSegment(tripId, it) }
+            streetSegmentTracker = StreetSegmentTracker(
+                streetName = normalizedStreet,
+                startTime = timestamp,
+                lastTime = timestamp,
+                startPoint = location,
+                lastPoint = location,
+                distanceMeters = 0.0,
+                sampleCount = 1
+            )
+            return
+        }
+
+        val distance = NavigationUtils.calculateDistanceMeters(tracker.lastPoint, location)
+        tracker.distanceMeters += distance
+        tracker.lastPoint = location
+        tracker.lastTime = timestamp
+        tracker.sampleCount += 1
+    }
+
+    private fun finalizeStreetSegment(tripId: String, tracker: StreetSegmentTracker) {
+        val manager = tripLoggingManager ?: return
+        val durationMs = (tracker.lastTime - tracker.startTime).coerceAtLeast(0)
+        val averageSpeedMps = if (durationMs > 0) {
+            tracker.distanceMeters / (durationMs / 1000.0)
+        } else {
+            0.0
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                manager.logStreetSegment(
+                    tripId = tripId,
+                    streetName = tracker.streetName,
+                    startTime = tracker.startTime,
+                    endTime = tracker.lastTime,
+                    durationMs = durationMs,
+                    distanceMeters = tracker.distanceMeters,
+                    avgSpeedMps = averageSpeedMps,
+                    sampleCount = tracker.sampleCount,
+                    startPoint = tracker.startPoint,
+                    endPoint = tracker.lastPoint
+                )
+            } catch (e: Exception) {
+                Log.e("WayyTrip", "Street segment logging failed", e)
+                _uiState.value = _uiState.value.copy(
+                    error = "Trip logging error: ${e.message ?: "unknown"}"
+                )
+            }
+        }
+    }
+
+    private fun finalizeTrip(endLocation: Point?) {
+        val tripId = activeTripId ?: return
+        val manager = tripLoggingManager
+        streetSegmentTracker?.let { finalizeStreetSegment(tripId, it) }
+        streetSegmentTracker = null
+        activeTripId = null
+        if (manager == null) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                manager.endTrip(tripId, endLocation)
+            } catch (e: Exception) {
+                Log.e("WayyTrip", "Trip end failed", e)
+                _uiState.value = _uiState.value.copy(
+                    error = "Trip logging error: ${e.message ?: "unknown"}"
+                )
+            }
+        }
     }
 
     fun updateSimulatedStats(roadQuality: Float, gForce: Float) {

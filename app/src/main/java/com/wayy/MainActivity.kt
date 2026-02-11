@@ -27,6 +27,7 @@ import com.wayy.ui.screens.RouteOverviewScreen
 import com.wayy.ui.theme.WayyColors
 import com.wayy.ui.theme.WayyTheme
 import com.wayy.ui.theme.WayyTypography
+import com.wayy.data.local.TripLoggingManager
 import com.wayy.data.repository.LocalPoiManager
 import com.wayy.data.repository.RouteHistoryManager
 import com.wayy.data.repository.TrafficReportManager
@@ -108,7 +109,8 @@ fun AppContent(
                     return NavigationViewModel(
                         routeHistoryManager = RouteHistoryManager(context),
                         localPoiManager = LocalPoiManager(context),
-                        trafficReportManager = TrafficReportManager(context)
+                        trafficReportManager = TrafficReportManager(context),
+                        tripLoggingManager = TripLoggingManager(context)
                     ) as T
                 }
                 throw IllegalArgumentException("Unknown ViewModel class")
