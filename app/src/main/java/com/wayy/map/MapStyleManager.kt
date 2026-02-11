@@ -71,13 +71,11 @@ class MapStyleManager {
             Expression.get("name"),
             Expression.get("name:ar")
         )
-        val fontStack = arrayOf("noto_sans_regular", "noto_sans_bold")
         style.layers.orEmpty()
             .filterIsInstance<SymbolLayer>()
             .forEach { layer ->
                 layer.setProperties(
-                    PropertyFactory.textField(labelExpression),
-                    PropertyFactory.textFont(fontStack)
+                    PropertyFactory.textField(labelExpression)
                 )
             }
     }
