@@ -9,12 +9,17 @@ android {
     namespace = "com.wayy"
     compileSdk = 34
 
+    val mapStyleUrl = (project.findProperty("wayy.mapStyleUrl") as String?)
+        ?: "https://vector.openstreetmap.org/styles/shortbread/shadow.json"
+
     defaultConfig {
         applicationId = "com.wayy"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        buildConfigField("String", "MAP_STYLE_URL", "\"$mapStyleUrl\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -43,6 +48,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {

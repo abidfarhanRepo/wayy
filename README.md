@@ -98,6 +98,24 @@ adb pull /data/data/com.wayy/files/capture ./capture
 adb pull /data/data/com.wayy/files/diagnostics ./diagnostics
 ```
 
+## Offline Maps
+
+The app auto-downloads a local offline region (~12 km radius) around your first GPS fix using the current map style URL. By default it uses OSM vector tiles via the shortbread style (`https://vector.openstreetmap.org/styles/shortbread/shadow.json`). For production or heavy use, switch to a self-hosted tile server to avoid public tile limits. Offline tiles are stored in `mbgl-offline.db` inside app storage.
+
+To use a self-hosted TileServer GL Light or Martin instance, pass a style URL at build time:
+
+```bash
+./gradlew assembleDebug -Pwayy.mapStyleUrl=http://10.0.2.2:8080/styles/basic/style.json
+```
+
+For TileServer GL Light with MBTiles:
+
+```bash
+docker run -v $(pwd)/tiles:/data -p 8080:8080 maptiler/tileserver-gl-light
+```
+
+This same style URL is used for offline downloads, so the device will cache tiles from your server. Map tile requests include a Wayy User-Agent header and cache responses for up to 7 days.
+
 ## Geocoding
 
 Search uses Nominatim with a Photon fallback when rate-limited (e.g. HTTP 509/429).
@@ -137,7 +155,7 @@ The app requires the following permissions:
 
 ## Current MVP Status (Implemented)
 
-- **Map rendering** with MapLibre + OSM tiles
+- **Map rendering** with MapLibre + OSM vector tiles (configurable style URL)
 - **Live GPS location** with camera follow and user marker
 - **Destination search** via Nominatim (typed query → results list)
 - **Routing + navigation** via OSRM (route line + turn banner + ETA/remaining distance)

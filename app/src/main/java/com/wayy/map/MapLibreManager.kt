@@ -1,6 +1,9 @@
 package com.wayy.map
 
 import android.content.Context
+import okhttp3.Cache
+import okhttp3.Interceptor
+import okhttp3.OkHttpClient
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -9,7 +12,7 @@ import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.OnMapReadyCallback
-import org.maplibre.android.maps.Style
+import org.maplibre.android.module.http.HttpRequestUtil
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
@@ -18,6 +21,7 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
+import java.io.File
 
 /**
  * Manager for MapLibre map operations
@@ -28,15 +32,9 @@ class MapLibreManager(private val context: Context) {
     private var mapLibreMap: MapLibreMap? = null
 
     companion object {
-        // CartoDB Dark Matter tiles (free, no API key required)
-        // Sleek dark theme perfect for Waze-like navigation
-        // NOTE: Removed @2x suffix as MapLibre doesn't handle it correctly
-        private const val CARTO_DARK_TILES = "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
-
-        // Alternative dark styles (commented out):
-        // private const val OSM_RASTER_STYLE = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        // private const val DARK_STYLE_URL = "https://demotiles.maplibre.org/style.json"
-        // private const val THUNDERFOREST_DARK = "https://a.tile.thunderforest.com/transport-dark/{z}/{x}/{y}.png"
+        private const val TILE_USER_AGENT = "WayyMap/1.0 (contact@wayy.app)"
+        private const val CACHE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7
+        private const val CACHE_SIZE_BYTES = 200L * 1024L * 1024L
     }
 
     /**
@@ -44,6 +42,7 @@ class MapLibreManager(private val context: Context) {
      */
     fun initialize() {
         MapLibre.getInstance(context)
+        HttpRequestUtil.setOkHttpClient(buildTileClient())
     }
 
     /**
@@ -68,49 +67,37 @@ class MapLibreManager(private val context: Context) {
 
     /**
      * Configure map style and settings
-     * Uses CartoDB Dark Matter tiles for Waze-like dark theme
      */
     private fun configureMap(map: MapLibreMap) {
-        // Create style JSON with CartoDB Dark Matter tiles
-        val styleJson = """
-        {
-            "version": 8,
-            "name": "Wayy Dark",
-            "sources": {
-                "carto-dark": {
-                    "type": "raster",
-                    "tiles": ["$CARTO_DARK_TILES"],
-                    "tileSize": 256,
-                    "attribution": "© OpenStreetMap contributors, © CartoDB"
-                }
-            },
-            "layers": [
-                {
-                    "id": "background",
-                    "type": "background",
-                    "paint": {
-                        "background-color": "#020617"
-                    }
-                },
-                {
-                    "id": "carto-dark-tiles",
-                    "type": "raster",
-                    "source": "carto-dark",
-                    "paint": {
-                        "raster-opacity": 0.85,
-                        "raster-saturation": -0.3
-                    }
-                }
-            ]
-        }
-        """.trimIndent()
+        map.uiSettings.isCompassEnabled = false
+        map.uiSettings.isLogoEnabled = false
+        map.uiSettings.isAttributionEnabled = false
+    }
 
-        map.setStyle(Style.Builder().fromJson(styleJson)) {
-            // Style loaded - hide UI elements for clean Waze-like look
-            map.uiSettings.isCompassEnabled = false
-            map.uiSettings.isLogoEnabled = false
-            map.uiSettings.isAttributionEnabled = false
+    private fun buildTileClient(): OkHttpClient {
+        val cacheDir = File(context.cacheDir, "map-tiles")
+        val cache = Cache(cacheDir, CACHE_SIZE_BYTES)
+        val headerInterceptor = Interceptor { chain ->
+            val request = chain.request().newBuilder()
+                .header("User-Agent", TILE_USER_AGENT)
+                .build()
+            val response = chain.proceed(request)
+            val cacheControl = response.header("Cache-Control").orEmpty()
+            if (cacheControl.contains("no-store", ignoreCase = true) ||
+                cacheControl.contains("no-cache", ignoreCase = true) ||
+                cacheControl.isBlank()
+            ) {
+                response.newBuilder()
+                    .header("Cache-Control", "public, max-age=$CACHE_MAX_AGE_SECONDS")
+                    .build()
+            } else {
+                response
+            }
         }
+        return OkHttpClient.Builder()
+            .cache(cache)
+            .addInterceptor(headerInterceptor)
+            .build()
     }
 
     /**

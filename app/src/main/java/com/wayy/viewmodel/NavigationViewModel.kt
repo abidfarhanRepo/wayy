@@ -240,12 +240,12 @@ class NavigationViewModel(
         }
     }
 
-    fun searchPlaces(query: String) {
+    fun searchPlaces(query: String, location: Point? = null) {
         viewModelScope.launch {
             _isSearching.value = true
             _searchError.value = null
 
-            val result = routeRepository.searchPlaces(query)
+            val result = routeRepository.searchPlaces(query, location)
             if (result.isSuccess) {
                 _searchResults.value = result.getOrNull().orEmpty()
             } else {

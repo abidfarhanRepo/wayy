@@ -38,30 +38,41 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wayy.data.repository.RouteHistoryItem
 import com.wayy.data.repository.LocalPoiItem
 import com.wayy.data.repository.PlaceResult
+import com.wayy.debug.DiagnosticLogger
+import com.wayy.debug.ExportBundleManager
+import com.wayy.map.OfflineMapManager
+import com.wayy.map.OfflineSummary
 import com.wayy.ui.components.glass.GlassCard
 import com.wayy.ui.theme.WayyColors
 import com.wayy.navigation.NavigationUtils
 import com.wayy.viewmodel.NavigationViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.maplibre.geojson.Point
+import java.util.Locale
 
 /**
  * Route overview screen for searching and selecting destinations
@@ -84,6 +95,13 @@ fun RouteOverviewScreen(
     val localPois = viewModel.localPois?.collectAsState()?.value.orEmpty()
     val recentRoutes = viewModel.recentRoutes?.collectAsState()?.value.orEmpty()
     val currentLocation = viewModel.uiState.collectAsState().value.currentLocation
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val exportManager = remember { ExportBundleManager(context, DiagnosticLogger(context)) }
+    val offlineMapManager = remember { OfflineMapManager(context, DiagnosticLogger(context)) }
+    var offlineSummary by remember { mutableStateOf<OfflineSummary?>(null) }
+    var offlineRadius by remember { mutableStateOf(12.0) }
     val showSearchResults = searchQuery.trim().length >= 3
     val filteredPois = localPois.filter { poi ->
         selectedCategory == "all" || poi.category.lowercase() == selectedCategory
@@ -109,7 +127,13 @@ fun RouteOverviewScreen(
         }
         delay(350)
         if (query == searchQuery.trim()) {
-            viewModel.searchPlaces(query)
+            viewModel.searchPlaces(query, currentLocation)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        offlineMapManager.loadSummary { summary ->
+            offlineSummary = summary
         }
     }
 
@@ -159,6 +183,114 @@ fun RouteOverviewScreen(
             if (isSearching) {
                 Spacer(modifier = Modifier.height(32.dp))
                 CircularProgressIndicator(color = WayyColors.PrimaryLime)
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = "Offline Maps",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                    val summary = offlineSummary
+                    val summaryText = if (summary == null) {
+                        "Checking offline data..."
+                    } else {
+                        val regions = if (summary.regionCount == 0) {
+                            "No areas saved"
+                        } else {
+                            "${summary.regionCount} area${if (summary.regionCount == 1) "" else "s"} saved"
+                        }
+                        val status = if (summary.isDownloading) "Downloading" else "Idle"
+                        "$regions • ${formatBytes(summary.dbSizeBytes)} • $status"
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = summaryText,
+                        color = WayyColors.TextSecondary,
+                        fontSize = 12.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(5.0, 12.0, 20.0).forEach { radius ->
+                            FilterChip(
+                                selected = offlineRadius == radius,
+                                onClick = { offlineRadius = radius },
+                                label = { Text("${radius.toInt()} km") }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            val location = currentLocation
+                            if (location == null) {
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("Location required for offline download")
+                                }
+                            } else {
+                                offlineMapManager.ensureRegion(
+                                    center = org.maplibre.android.geometry.LatLng(location.latitude(), location.longitude()),
+                                    radiusKm = offlineRadius,
+                                    minZoom = 12.0,
+                                    maxZoom = 19.0
+                                )
+                                offlineMapManager.loadSummary { summary ->
+                                    offlineSummary = summary
+                                }
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("Offline download started")
+                                }
+                            }
+                        },
+                        enabled = currentLocation != null
+                    ) {
+                        Text("Download Offline Area")
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = "Export Capture + Logs",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                val exportFile = exportManager.createExportBundle()
+                                if (exportFile == null) {
+                                    snackbarHostState.showSnackbar("Nothing to export yet")
+                                    return@launch
+                                }
+                                val uri = FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    exportFile
+                                )
+                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    type = "application/zip"
+                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(
+                                    android.content.Intent.createChooser(shareIntent, "Share Wayy export")
+                                )
+                            }
+                        }
+                    ) {
+                        Text("Export Bundle")
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -411,6 +543,13 @@ fun RouteOverviewScreen(
                 }
             }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 24.dp)
+        )
     }
 }
 
@@ -521,4 +660,16 @@ private fun poiCategoryIcon(category: String): ImageVector {
 private fun poiCategoryColor(category: String): Color {
     return poiCategoryOptions.firstOrNull { it.id == category.lowercase() }?.color
         ?: WayyColors.Info
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes <= 0L) return "0 MB"
+    val kb = bytes / 1024.0
+    val mb = kb / 1024.0
+    val gb = mb / 1024.0
+    return when {
+        gb >= 1.0 -> String.format(Locale.US, "%.1f GB", gb)
+        mb >= 1.0 -> String.format(Locale.US, "%.1f MB", mb)
+        else -> String.format(Locale.US, "%.0f KB", kb)
+    }
 }

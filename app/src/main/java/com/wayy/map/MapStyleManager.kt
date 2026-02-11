@@ -1,5 +1,6 @@
 package com.wayy.map
 
+import com.wayy.BuildConfig
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
@@ -18,14 +19,7 @@ import org.maplibre.android.style.layers.RasterLayer
 class MapStyleManager {
 
     companion object {
-        // FREE TILE SOURCES
-        // 1. OSM Standard - reliable, shows roads, no API key needed
-        private const val OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-
-        // 2. For buildings and 3D view, you need a MapTiler API key:
-        // Get free key at https://cloud.maptiler.com/
-        // Replace YOUR_API_KEY below with your actual key
-        // private const val MAPTILER_VECTOR_STYLE = "https://api.maptiler.com/maps/streets/style.json?key=YOUR_API_KEY"
+        val STYLE_URI: String = BuildConfig.MAP_STYLE_URL.ifBlank { "asset://wayy_style.json" }
 
         // Style constants
         const val ROUTE_SOURCE_ID = "route-source"
@@ -52,56 +46,18 @@ class MapStyleManager {
         private const val POI_DEFAULT_COLOR = "#3B82F6"
     }
 
-    /**
-     * Apply dark navigation style to map
-     * Uses OSM tiles (free, no API key, shows roads)
-     *
-     * FOR BUILDINGS AND 3D VIEW:
-     * You need to add a MapTiler API key above and uncomment the MAPTILER_VECTOR_STYLE line
-     * Then change styleUrl to use MAPTILER_VECTOR_STYLE instead of OSM
-     *
-     * @param map The MapLibreMap instance
-     * @param onStyleLoaded Callback when style is successfully loaded
-     */
+     /**
+      * Apply navigation map style from BuildConfig.MAP_STYLE_URL.
+      *
+      * @param map The MapLibreMap instance
+      * @param onStyleLoaded Callback when style is successfully loaded
+      */
     fun applyDarkStyle(
         map: MapLibreMap,
         onStyleLoaded: () -> Unit = {}
     ) {
-        // Build style JSON with OSM tiles
-        val styleJson = """
-        {
-            "version": 8,
-            "name": "Wayy Dark",
-            "sources": {
-                "osm-tiles": {
-                    "type": "raster",
-                    "tiles": ["$OSM_TILES"],
-                    "tileSize": 256,
-                    "attribution": "© OpenStreetMap contributors"
-                }
-            },
-            "layers": [
-                {
-                    "id": "background",
-                    "type": "background",
-                    "paint": {
-                        "background-color": "#0f172a"
-                    }
-                },
-                {
-                    "id": "osm-tiles-layer",
-                    "type": "raster",
-                    "source": "osm-tiles",
-                    "paint": {
-                        "raster-opacity": 1.0
-                    }
-                }
-            ]
-        }
-        """.trimIndent()
-
-        map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
-            android.util.Log.d("MapStyleManager", "Style loaded successfully with OSM tiles")
+        map.setStyle(Style.Builder().fromUri(STYLE_URI)) { style ->
+            android.util.Log.d("MapStyleManager", "Style loaded: $STYLE_URI")
             onStyleLoaded()
         }
     }

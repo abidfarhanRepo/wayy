@@ -77,6 +77,7 @@ import com.wayy.map.MapLibreManager
 import com.wayy.map.MapViewAutoLifecycle
 import com.wayy.map.MapStyleManager
 import com.wayy.map.WazeStyleManager
+import com.wayy.map.OfflineMapManager
 import com.wayy.navigation.NavigationUtils
 import com.wayy.ui.components.camera.CameraPreviewCard
 import com.wayy.ui.components.camera.CameraPreviewSurface
@@ -126,7 +127,9 @@ fun MainNavigationScreen(
     val arCapabilityChecker = remember { ARCapabilityChecker(context) }
     val captureController = remember { NavigationCaptureController(context) }
     val diagnosticLogger = remember { DiagnosticLogger(context) }
+    val offlineMapManager = remember { OfflineMapManager(context, diagnosticLogger) }
     var videoCapture by remember { mutableStateOf<androidx.camera.video.VideoCapture<androidx.camera.video.Recorder>?>(null) }
+    var offlineRequested by remember { mutableStateOf(false) }
     val localPois = viewModel.localPois?.collectAsState()?.value.orEmpty()
     val trafficReports = viewModel.trafficReports?.collectAsState()?.value.orEmpty()
     val trafficSegments = viewModel.trafficSegments.collectAsState().value
@@ -228,6 +231,13 @@ fun MainNavigationScreen(
                 mapManager.centerOnUserLocation(
                     LatLng(location.latitude(), location.longitude())
                 )
+                if (!offlineRequested) {
+                    offlineMapManager.ensureRegion(
+                        center = LatLng(location.latitude(), location.longitude()),
+                        radiusKm = 12.0
+                    )
+                    offlineRequested = true
+                }
             }
         }
     }
@@ -310,10 +320,10 @@ fun MainNavigationScreen(
         }
     }
 
-    val shouldCapture = uiState.isNavigating && uiState.isCaptureEnabled && hasCameraPermission
+    val shouldCapture = uiState.arMode != ARMode.DISABLED && uiState.isCaptureEnabled && hasCameraPermission
     LaunchedEffect(shouldCapture, videoCapture, uiState.currentRoute, uiState.arMode) {
-        val capture = videoCapture ?: return@LaunchedEffect
-        if (shouldCapture) {
+        val capture = videoCapture
+        if (shouldCapture && capture != null) {
             captureController.startIfNeeded(
                 capture,
                 CaptureSessionInfo(
@@ -334,6 +344,13 @@ fun MainNavigationScreen(
                 )
             )
             diagnosticLogger.log(tag = "WayyCapture", message = "Capture stopped")
+            if (shouldCapture && capture == null) {
+                diagnosticLogger.log(
+                    tag = "WayyCapture",
+                    message = "Capture pending; video pipeline not ready",
+                    level = "WARN"
+                )
+            }
         }
     }
 
@@ -574,7 +591,7 @@ fun MainNavigationScreen(
         }
 
         AnimatedVisibility(
-            visible = uiState.isAROverlayActive && uiState.isNavigating && uiState.arMode == ARMode.PIP_OVERLAY,
+            visible = uiState.arMode == ARMode.PIP_OVERLAY,
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .navigationBarsPadding()

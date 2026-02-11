@@ -1,0 +1,144 @@
+package com.wayy.map
+
+import android.content.Context
+import android.util.Log
+import com.wayy.debug.DiagnosticLogger
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
+import org.maplibre.android.offline.OfflineManager
+import org.maplibre.android.offline.OfflineRegion
+import org.maplibre.android.offline.OfflineRegionError
+import org.maplibre.android.offline.OfflineRegionStatus
+import org.maplibre.android.offline.OfflineTilePyramidRegionDefinition
+import java.nio.charset.Charset
+import java.io.File
+
+class OfflineMapManager(
+    context: Context,
+    private val diagnosticLogger: DiagnosticLogger
+) {
+
+    private val offlineManager: OfflineManager = OfflineManager.getInstance(context)
+    private val offlineDbFile = File(context.filesDir, "mbgl-offline.db")
+    private var isDownloading = false
+
+    fun loadSummary(callback: (OfflineSummary) -> Unit) {
+        offlineManager.listOfflineRegions(object : OfflineManager.ListOfflineRegionsCallback {
+            override fun onList(offlineRegions: Array<OfflineRegion>?) {
+                val count = offlineRegions?.size ?: 0
+                val size = if (offlineDbFile.exists()) offlineDbFile.length() else 0L
+                callback(OfflineSummary(count, size, isDownloading))
+            }
+
+            override fun onError(error: String) {
+                val size = if (offlineDbFile.exists()) offlineDbFile.length() else 0L
+                callback(OfflineSummary(0, size, isDownloading))
+            }
+        })
+    }
+
+    fun ensureRegion(center: LatLng, radiusKm: Double = 10.0, minZoom: Double = 12.0, maxZoom: Double = 18.0) {
+        if (isDownloading) return
+        offlineManager.listOfflineRegions(object : OfflineManager.ListOfflineRegionsCallback {
+            override fun onList(offlineRegions: Array<OfflineRegion>?) {
+                if (!offlineRegions.isNullOrEmpty()) {
+                    diagnosticLogger.log(tag = TAG, message = "Offline region already exists")
+                    return
+                }
+                createRegion(center, radiusKm, minZoom, maxZoom)
+            }
+
+            override fun onError(error: String) {
+                diagnosticLogger.log(tag = TAG, message = "Offline list error", level = "ERROR", data = mapOf("error" to error))
+                createRegion(center, radiusKm, minZoom, maxZoom)
+            }
+        })
+    }
+
+    private fun createRegion(center: LatLng, radiusKm: Double, minZoom: Double, maxZoom: Double) {
+        val bounds = buildBounds(center, radiusKm)
+        val definition = OfflineTilePyramidRegionDefinition(
+            MapStyleManager.STYLE_URI,
+            bounds,
+            minZoom,
+            maxZoom,
+            1f
+        )
+        val metadata = "WayyOffline".toByteArray(Charset.forName("UTF-8"))
+
+        offlineManager.createOfflineRegion(definition, metadata, object : OfflineManager.CreateOfflineRegionCallback {
+            override fun onCreate(offlineRegion: OfflineRegion) {
+                isDownloading = true
+                diagnosticLogger.log(tag = TAG, message = "Offline download started")
+                offlineRegion.setObserver(object : OfflineRegion.OfflineRegionObserver {
+                    override fun onStatusChanged(status: OfflineRegionStatus) {
+                        val completed = status.isComplete
+                        val percentage = if (status.requiredResourceCount > 0) {
+                            100.0 * status.completedResourceCount / status.requiredResourceCount
+                        } else {
+                            0.0
+                        }
+                        diagnosticLogger.log(
+                            tag = TAG,
+                            message = "Offline progress",
+                            data = mapOf(
+                                "completed" to completed,
+                                "percentage" to percentage,
+                                "completedResources" to status.completedResourceCount,
+                                "requiredResources" to status.requiredResourceCount
+                            )
+                        )
+                        if (completed) {
+                            isDownloading = false
+                        }
+                    }
+
+                    override fun onError(error: OfflineRegionError) {
+                        isDownloading = false
+                        diagnosticLogger.log(
+                            tag = TAG,
+                            message = "Offline error",
+                            level = "ERROR",
+                            data = mapOf("reason" to error.message)
+                        )
+                    }
+
+                    override fun mapboxTileCountLimitExceeded(limit: Long) {
+                        isDownloading = false
+                        diagnosticLogger.log(
+                            tag = TAG,
+                            message = "Offline limit exceeded",
+                            level = "ERROR",
+                            data = mapOf("limit" to limit)
+                        )
+                    }
+                })
+                offlineRegion.setDownloadState(OfflineRegion.STATE_ACTIVE)
+            }
+
+            override fun onError(error: String) {
+                isDownloading = false
+                diagnosticLogger.log(tag = TAG, message = "Offline create error", level = "ERROR", data = mapOf("error" to error))
+                Log.e(TAG, "Offline create error: $error")
+            }
+        })
+    }
+
+    private fun buildBounds(center: LatLng, radiusKm: Double): LatLngBounds {
+        val latOffset = radiusKm / 110.574
+        val lngOffset = radiusKm / (111.320 * kotlin.math.cos(Math.toRadians(center.latitude)))
+        val northeast = LatLng(center.latitude + latOffset, center.longitude + lngOffset)
+        val southwest = LatLng(center.latitude - latOffset, center.longitude - lngOffset)
+        return LatLngBounds.from(northeast.latitude, northeast.longitude, southwest.latitude, southwest.longitude)
+    }
+
+    companion object {
+        private const val TAG = "WayyOffline"
+    }
+}
+
+data class OfflineSummary(
+    val regionCount: Int,
+    val dbSizeBytes: Long,
+    val isDownloading: Boolean
+)
