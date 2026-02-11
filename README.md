@@ -135,6 +135,7 @@ Build the app to point at the TileJSON:
 ```
 
 When `wayy.pmtilesTilejsonUrl` is set, the app uses the bundled `protomaps_style.json` (dark flavor) with English labels.
+The app currently allows cleartext HTTP so the local PMTiles server can be reached; for production, serve over HTTPS and tighten `network_security_config.xml`.
 
 To use a self-hosted TileServer GL Light or Martin instance, pass a style URL at build time:
 
