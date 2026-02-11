@@ -23,6 +23,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,20 +35,39 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.wayy.ui.components.glass.GlassButton
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.wayy.data.repository.PlaceResult
 import com.wayy.ui.components.glass.GlassCard
 import com.wayy.ui.theme.WayyColors
+import com.wayy.viewmodel.NavigationViewModel
+import kotlinx.coroutines.delay
 
 /**
  * Route overview screen for searching and selecting destinations
  */
 @Composable
 fun RouteOverviewScreen(
-    onDestinationSelected: (String) -> Unit = {},
+    viewModel: NavigationViewModel = viewModel(),
+    onDestinationSelected: (PlaceResult) -> Unit = {},
     onRecentRouteClick: () -> Unit = {}
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    var isSearching by remember { mutableStateOf(false) }
+    val searchResults by viewModel.searchResults.collectAsState()
+    val isSearching by viewModel.isSearching.collectAsState()
+    val searchError by viewModel.searchError.collectAsState()
+    val showSearchResults = searchQuery.trim().length >= 3
+
+    LaunchedEffect(searchQuery) {
+        val query = searchQuery.trim()
+        if (query.length < 3) {
+            viewModel.clearSearchResults()
+            return@LaunchedEffect
+        }
+        delay(350)
+        if (query == searchQuery.trim()) {
+            viewModel.searchPlaces(query)
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -107,12 +128,12 @@ fun RouteOverviewScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = Icons.Default.History,
+                    imageVector = if (showSearchResults) Icons.Default.Search else Icons.Default.History,
                     contentDescription = null,
                     tint = WayyColors.PrimaryLime
                 )
                 Text(
-                    text = "Recent Routes",
+                    text = if (showSearchResults) "Results" else "Recent Routes",
                     color = WayyColors.TextSecondary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium
@@ -120,6 +141,15 @@ fun RouteOverviewScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+
+            searchError?.let { message ->
+                Text(
+                    text = message,
+                    color = WayyColors.Error,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+            }
 
             // Recent routes list
             LazyColumn(
@@ -129,13 +159,36 @@ fun RouteOverviewScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(getDemoRecentRoutes()) { route ->
-                    RecentRouteCard(
-                        name = route.name,
-                        address = route.address,
-                        distance = route.distance,
-                        onClick = { onDestinationSelected(route.name) }
-                    )
+                if (showSearchResults) {
+                    if (!isSearching && searchResults.isEmpty() && searchError == null) {
+                        item {
+                            Text(
+                                text = "No results found",
+                                color = WayyColors.TextSecondary,
+                                fontSize = 13.sp
+                            )
+                        }
+                    } else {
+                        items(searchResults) { place ->
+                            val parts = place.display_name.split(",")
+                            val name = parts.firstOrNull()?.trim().orEmpty().ifEmpty { place.display_name }
+                            val address = parts.drop(1).joinToString(",").trim()
+                            RecentRouteCard(
+                                name = name,
+                                address = address.ifEmpty { place.display_name },
+                                distance = "Select",
+                                onClick = { onDestinationSelected(place) }
+                            )
+                        }
+                    }
+                } else {
+                    item {
+                        Text(
+                            text = "No recent routes yet",
+                            color = WayyColors.TextSecondary,
+                            fontSize = 13.sp
+                        )
+                    }
                 }
             }
         }
@@ -197,20 +250,3 @@ fun RecentRouteCard(
         }
     }
 }
-
-/**
- * Demo recent routes data
- */
-private data class RecentRoute(
-    val name: String,
-    val address: String,
-    val distance: String
-)
-
-private fun getDemoRecentRoutes(): List<RecentRoute> = listOf(
-    RecentRoute("Home", "123 Main Street, San Francisco", "3.2 mi"),
-    RecentRoute("Work", "456 Market Street, San Francisco", "8.5 mi"),
-    RecentRoute("Gym", "789 Fitness Ave, San Francisco", "2.1 mi"),
-    RecentRoute("Coffee Shop", "321 Brew Lane, San Francisco", "1.4 mi"),
-    RecentRoute("Grocery Store", "654 Food Road, San Francisco", "4.7 mi")
-)

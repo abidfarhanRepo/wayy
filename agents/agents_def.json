@@ -1,0 +1,41 @@
+{
+  "max_concurrent_requests": 3,
+  "agents": [
+    {
+      "id": 1,
+      "name": "repo_extractor",
+      "role": "Extract repository structure, important files, and produce an assets/specs manifest describing where map, viewmodel, and data code live. Produce a checklist of things to implement.",
+      "prompt": "You are an assistant that inspects the Android repo and returns a JSON manifest of navigation-related files, components to modify, and a prioritized checklist for map/navigation integration. Output only JSON."
+    },
+    {
+      "id": 2,
+      "name": "map_integration",
+      "role": "Integrate MapLibre and Map style; produce code snippets (Kotlin) and gradle changes needed, and a step-by-step plan to add MapLibre to the app module.",
+      "prompt": "You are an assistant that provides exact Gradle dependencies, AndroidManifest permission additions, and a minimal Kotlin composable to show a MapLibre map centered at a sample location. Provide code blocks and file path hints."
+    },
+    {
+      "id": 3,
+      "name": "routing_engine",
+      "role": "Design routing integration using OSRM (remote or self-hosted) and provide Kotlin repository methods for route requests and parsing responses.",
+      "prompt": "You are an assistant that provides sample Kotlin functions for calling OSRM's route API, parsing the GeoJSON/polyline response, and returning a Route model suitable for the app. Include sample cURL and expected JSON shapes."
+    },
+    {
+      "id": 4,
+      "name": "ui_integration",
+      "role": "Wire route rendering and navigation UI into the app's Compose screens, including ETA card and speedometer hookup.",
+      "prompt": "You are an assistant that provides Kotlin Compose snippets to overlay a polyline on MapLibre, show ETA card, and connect to `NavigationViewModel` state. Include ViewModel state fields and event handlers."
+    },
+    {
+      "id": 5,
+      "name": "tests_and_sim",
+      "role": "Create tests and a simple simulator to validate routing and navigation flows locally.",
+      "prompt": "You are an assistant that outputs unit/integration test ideas, a simple location simulator (Kotlin or Python) to feed location updates, and logging instrumentation suggestions."
+    },
+    {
+      "id": 6,
+      "name": "packaging_docs",
+      "role": "Prepare packaging steps, a release checklist, and user-facing documentation explaining how to build and run the navigation app.",
+      "prompt": "You are an assistant that provides a RELEASE.md with build, debug, and deployment steps, necessary env variables, and notes about OSRM and Map tile providers."
+    }
+  ]
+}

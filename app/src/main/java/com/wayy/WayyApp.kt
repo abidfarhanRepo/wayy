@@ -5,19 +5,17 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import com.wayy.map.MapLibreManager
+import com.wayy.map.TileCacheManager
 
-/**
- * Main application class for MapPulse Ultimate
- */
 class WayyApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
 
-        // Initialize MapLibre
         MapLibreManager(this).initialize()
 
-        // Create notification channel for foreground service (future use)
+        TileCacheManager(this).initialize()
+
         createNotificationChannel()
     }
 

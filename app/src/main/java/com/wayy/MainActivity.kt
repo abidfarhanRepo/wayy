@@ -18,12 +18,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
-import com.wayy.ui.screens.DemoNavigationScreen
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wayy.ui.screens.MainNavigationScreen
 import com.wayy.ui.screens.RouteOverviewScreen
 import com.wayy.ui.theme.WayyColors
 import com.wayy.ui.theme.WayyTheme
 import com.wayy.ui.theme.WayyTypography
+import com.wayy.viewmodel.NavigationViewModel
+import org.maplibre.geojson.Point
 
 /**
  * Main activity for MapPulse Ultimate
@@ -91,6 +93,7 @@ fun AppContent(
     onRequestPermission: () -> Unit
 ) {
     var currentScreen by remember { mutableStateOf<AppScreen>(AppScreen.Main) }
+    val navigationViewModel: NavigationViewModel = viewModel()
 
     LaunchedEffect(hasPermission) {
         if (!hasPermission) {
@@ -101,8 +104,9 @@ fun AppContent(
     when (currentScreen) {
         AppScreen.Main -> {
             MainNavigationScreen(
+                viewModel = navigationViewModel,
                 onMenuClick = {
-                    // Navigate to menu/settings
+                    currentScreen = AppScreen.RouteOverview
                 },
                 onSettingsClick = {
                     // Navigate to settings
@@ -111,17 +115,17 @@ fun AppContent(
         }
         AppScreen.RouteOverview -> {
             RouteOverviewScreen(
+                viewModel = navigationViewModel,
                 onDestinationSelected = { destination ->
-                    // Start navigation to destination
+                    navigationViewModel.startNavigation(
+                        Point.fromLngLat(destination.lon, destination.lat)
+                    )
                     currentScreen = AppScreen.Main
                 },
                 onRecentRouteClick = {
                     // Navigate to route
                 }
             )
-        }
-        AppScreen.Demo -> {
-            DemoNavigationScreen()
         }
     }
 }
@@ -132,5 +136,4 @@ fun AppContent(
 sealed class AppScreen {
     object Main : AppScreen()
     object RouteOverview : AppScreen()
-    object Demo : AppScreen()
 }

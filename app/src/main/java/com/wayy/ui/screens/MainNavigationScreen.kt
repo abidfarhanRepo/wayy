@@ -1,26 +1,25 @@
 package com.wayy.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -30,34 +29,34 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlin.random.Random
+import android.util.Log
+import com.wayy.data.sensor.LocationManager
 import com.wayy.map.MapLibreManager
 import com.wayy.map.MapViewAutoLifecycle
 import com.wayy.map.MapStyleManager
 import com.wayy.map.WazeStyleManager
-import com.wayy.ui.components.navigation.ETACard
-import com.wayy.ui.components.common.GForceCard
-import com.wayy.ui.components.common.QuickActionsBar
-import com.wayy.ui.components.common.RoadQualityCard
-import com.wayy.ui.components.common.StatCard
 import com.wayy.ui.components.common.TopBar
-import com.wayy.ui.components.gauges.Speedometer
-import com.wayy.ui.components.navigation.Direction
-import com.wayy.ui.components.navigation.NavigationOverlay
+import com.wayy.ui.components.navigation.ETACard
+import com.wayy.ui.components.navigation.TurnBanner
 import com.wayy.ui.theme.WayyColors
+import com.wayy.viewmodel.NavigationState
 import com.wayy.viewmodel.NavigationViewModel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
-import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.geometry.LatLngBounds
+import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.geojson.Feature
+import org.maplibre.geojson.LineString
+import org.maplibre.geojson.Point
 
 /**
- * Main navigation screen with map, speedometer, and controls
+ * Minimal MVP navigation screen (map + GPS + search + route)
  */
 @Composable
 fun MainNavigationScreen(
@@ -67,17 +66,40 @@ fun MainNavigationScreen(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
-    val speed by viewModel.speed.collectAsState()
     val coroutineScope = rememberCoroutineScope()
 
     val mapManager = remember { MapLibreManager(context) }
     val mapStyleManager = remember { MapStyleManager() }
     val wazeStyleManager = remember { WazeStyleManager() }
+    val locationManager = remember { LocationManager(context) }
 
-    // Snackbar for error messages
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Show error snackbar when error occurs
+    var hasLocationPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        hasLocationPermission = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasLocationPermission) {
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
+
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
             snackbarHostState.showSnackbar(it)
@@ -85,129 +107,131 @@ fun MainNavigationScreen(
         }
     }
 
-    // DEMO MODE: Simulate location and stats updates
-    // Set viewModel.isDemoMode = false to use real GPS
-    // TODO: Remove this block and use real location updates in production
-    LaunchedEffect(Unit) {
-        if (viewModel.isDemoMode) {
-            while (true) {
-                delay(2000)  // Slower updates for demo
-                val simulatedSpeed = (30..70).random().toFloat()
-                val simulatedBearing = (0..360).random().toFloat()
-                val baseLat = 25.2854
-                val baseLng = 51.5310
-                val offset = (0..100).random().toDouble() / 100000.0
-                viewModel.updateLocation(
-                    org.maplibre.geojson.Point.fromLngLat(baseLng + offset, baseLat + offset),
-                    simulatedSpeed,
-                    simulatedBearing
+    LaunchedEffect(hasLocationPermission) {
+        if (hasLocationPermission) {
+            val lastLocation = locationManager.getLastKnownLocation()
+            val location = lastLocation ?: locationManager.getCurrentLocation()
+            if (location == null) {
+                snackbarHostState.showSnackbar(
+                    "Unable to get location. Please ensure GPS is enabled."
                 )
-                viewModel.updateSimulatedStats(
-                    roadQuality = (80..98).random().toFloat(),
-                    gForce = Random.nextDouble(0.5, 2.5).toFloat()
+            } else {
+                Log.d(
+                    "WayyLocation",
+                    "Initial location set lat=${location.latitude()}, lon=${location.longitude()}"
+                )
+                viewModel.updateLocation(location)
+                mapManager.updateUserLocation(
+                    LatLng(location.latitude(), location.longitude())
+                )
+                mapManager.centerOnUserLocation(
+                    LatLng(location.latitude(), location.longitude())
                 )
             }
         }
     }
 
-    Box(
+    if (hasLocationPermission) {
+        DisposableEffect(locationManager) {
+            val job = coroutineScope.launch {
+                locationManager.startLocationUpdates().collect { update ->
+                    Log.d(
+                        "WayyLocation",
+                        "Live update lat=${update.location.latitude()}, lon=${update.location.longitude()}"
+                    )
+                    viewModel.updateLocation(update.location, update.speed, update.bearing)
+                    mapManager.updateUserLocation(
+                        LatLng(update.location.latitude(), update.location.longitude()),
+                        update.bearing
+                    )
+
+                    val currentState = viewModel.uiState.value
+                    if (currentState.isCameraFollowing || currentState.isNavigating) {
+                        mapManager.animateToLocationWithBearing(
+                            LatLng(update.location.latitude(), update.location.longitude()),
+                            update.bearing
+                        )
+                    }
+                }
+            }
+            onDispose { job.cancel() }
+        }
+    }
+
+    androidx.compose.foundation.layout.Box(
         modifier = Modifier
             .fillMaxSize()
             .background(WayyColors.BgPrimary)
     ) {
-        // Map view
         MapViewAutoLifecycle(
             manager = mapManager,
             modifier = Modifier.fillMaxSize(),
             onMapReady = { map ->
-                // FIRST: Apply dark style with CartoDB tiles
                 mapStyleManager.applyDarkStyle(map) {
-                    // Style loaded successfully - now configure map
-
-                    // Center map on default location (Doha, Qatar)
-                    map.cameraPosition = org.maplibre.android.camera.CameraPosition.Builder()
-                        .target(LatLng(25.2854, 51.5310))  // Doha, Qatar
+                    map.cameraPosition = CameraPosition.Builder()
+                        .target(LatLng(25.2854, 51.5310))
                         .zoom(13.0)
-                        .bearing(0.0)  // Start with North orientation
+                        .bearing(0.0)
                         .build()
 
-                    // Add Waze-style user location marker
-                    val locationSource = org.maplibre.android.style.sources.GeoJsonSource(
-                        "location-source",
-                        org.maplibre.geojson.Feature.fromGeometry(
-                            org.maplibre.geojson.Point.fromLngLat(51.5310, 25.2854)  // Doha, Qatar
-                        )
+                    val locationSource = GeoJsonSource(
+                        MapStyleManager.LOCATION_SOURCE_ID,
+                        Feature.fromGeometry(Point.fromLngLat(51.5310, 25.2854))
                     )
                     map.style?.addSource(locationSource)
-                    wazeStyleManager.addUserLocationMarker(map, "location-source")
+                    wazeStyleManager.addUserLocationMarker(map, MapStyleManager.LOCATION_SOURCE_ID)
+
+                    uiState.currentLocation?.let { location ->
+                        mapManager.updateUserLocation(
+                            LatLng(location.latitude(), location.longitude())
+                        )
+                        mapManager.centerOnUserLocation(
+                            LatLng(location.latitude(), location.longitude())
+                        )
+                    }
                 }
             }
         )
 
-        // Apply Waze-style route when navigation starts
         LaunchedEffect(uiState.isNavigating, uiState.currentRoute) {
-            if (uiState.isNavigating && uiState.currentRoute != null) {
-                // Get the map instance from mapManager
-                mapManager.getMapLibreMap()?.let { map ->
-                    // Clear existing route
-                    wazeStyleManager.clearWazeRoute(map)
+            mapManager.getMapLibreMap()?.let { map ->
+                val style = map.style ?: return@let
 
-                    // Create route source from geometry
-                    val route = uiState.currentRoute!!
-                    val coordinates = route.geometry.map { point ->
-                        org.maplibre.geojson.Point.fromLngLat(
-                            point.longitude(),
-                            point.latitude()
-                        )
-                    }
-                    val lineString = org.maplibre.geojson.LineString.fromLngLats(coordinates)
-                    val feature = org.maplibre.geojson.Feature.fromGeometry(lineString)
-                    val source = org.maplibre.android.style.sources.GeoJsonSource(
-                        "route-source",
-                        feature
-                    )
+                runCatching { style.removeLayer(MapStyleManager.ROUTE_LAYER_ID) }
+                runCatching { style.removeSource(MapStyleManager.ROUTE_SOURCE_ID) }
 
-                    // Add source (remove if exists)
-                    try {
-                        map.style?.removeSource("route-source")
-                    } catch (e: Exception) {
-                        // Source may not exist yet
-                    }
-                    map.style?.addSource(source)
-
-                    // Apply Waze-style route (glow + border + main line)
-                    wazeStyleManager.addWazeRoute(map, "route-source")
+                val route = uiState.currentRoute ?: return@let
+                val coordinates = route.geometry.map { point ->
+                    Point.fromLngLat(point.longitude(), point.latitude())
                 }
+                val lineString = LineString.fromLngLats(coordinates)
+                val feature = Feature.fromGeometry(lineString)
+                val source = GeoJsonSource(MapStyleManager.ROUTE_SOURCE_ID, feature)
+                style.addSource(source)
+                mapStyleManager.addRouteLayer(map, MapStyleManager.ROUTE_SOURCE_ID)
+
+                val boundsBuilder = LatLngBounds.Builder()
+                route.geometry.forEach { point ->
+                    boundsBuilder.include(LatLng(point.latitude(), point.longitude()))
+                }
+                mapManager.fitToBounds(boundsBuilder.build())
             }
         }
 
-        // Subtle background gradient
-        AnimatedGridBackground(modifier = Modifier.fillMaxSize())
-
-        // Top bar
         TopBar(
             onMenuClick = onMenuClick,
             onSettingsClick = onSettingsClick,
-            isScanningActive = uiState.isScanning,
+            isScanningActive = false,
             modifier = Modifier.align(Alignment.TopCenter)
         )
 
-        // Navigation overlay (visible when navigating)
         AnimatedVisibility(
             visible = uiState.isNavigating,
             enter = slideInVertically(
-                initialOffsetY = { -it / 2 },
-                animationSpec = androidx.compose.animation.core.spring(
-                    dampingRatio = 0.85f,
-                    stiffness = 450f
-                )
+                initialOffsetY = { -it / 2 }
             ) + fadeIn(),
             exit = slideOutVertically(
-                targetOffsetY = { -it / 2 },
-                animationSpec = androidx.compose.animation.core.spring(
-                    dampingRatio = 0.85f,
-                    stiffness = 450f
-                )
+                targetOffsetY = { -it / 2 }
             ) + fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
@@ -215,14 +239,27 @@ fun MainNavigationScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 70.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)
             ) {
-                NavigationOverlay(
-                    direction = uiState.nextDirection,
-                    distance = uiState.distanceToTurn,
-                    streetName = uiState.currentStreet,
-                    modifier = Modifier.padding(horizontal = 20.dp)
-                )
+                if (uiState.navigationState is NavigationState.Arrived) {
+                    TurnBanner(
+                        direction = uiState.nextDirection,
+                        distanceText = "",
+                        streetName = "You have arrived",
+                        instruction = "",
+                        isApproaching = false,
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    )
+                } else {
+                    TurnBanner(
+                        direction = uiState.nextDirection,
+                        distanceText = uiState.distanceToTurn,
+                        streetName = uiState.currentStreet,
+                        instruction = uiState.currentInstruction,
+                        isApproaching = uiState.isApproachingTurn,
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    )
+                }
 
                 ETACard(
                     eta = uiState.eta,
@@ -232,55 +269,6 @@ fun MainNavigationScreen(
             }
         }
 
-        // Speedometer (bottom left, compact size)
-        Speedometer(
-            speed = speed,
-            maxSpeed = 140f,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 20.dp, bottom = 90.dp)
-        )
-
-        // Stats panel (bottom right)
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 20.dp, bottom = 90.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            RoadQualityCard(
-                quality = "${uiState.roadQuality.toInt()}%"
-            )
-            GForceCard(
-                gForce = String.format("%.1fg", uiState.gForce)
-            )
-        }
-
-        // Quick actions bar (bottom center, cleaner spacing)
-        QuickActionsBar(
-            isNavigating = uiState.isNavigating,
-            isScanning = uiState.isScanning,
-            isARActive = uiState.isARMode,
-            is3DActive = uiState.is3DView,
-            onNavigateToggle = {
-                if (uiState.isNavigating) {
-                    viewModel.stopNavigation()
-                } else {
-                    // Demo: Start navigation to a fixed destination in Qatar
-                    viewModel.startNavigation(
-                        org.maplibre.geojson.Point.fromLngLat(51.5450, 25.3774) // The Pearl, Qatar
-                    )
-                }
-            },
-            onScanToggle = { viewModel.toggleScanning() },
-            onARModeToggle = { viewModel.toggleARMode() },
-            on3DViewToggle = { viewModel.toggle3DView() },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 20.dp)
-        )
-
-        // Snackbar host
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
@@ -293,93 +281,5 @@ fun MainNavigationScreen(
                 contentColor = Color.White
             )
         }
-    }
-}
-
-/**
- * Animated grid background for cyberpunk effect
- */
-@Composable
-fun AnimatedGridBackground(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(
-                        WayyColors.BgSecondary.copy(alpha = 0.5f),
-                        WayyColors.BgPrimary.copy(alpha = 0.8f)
-                    )
-                )
-            )
-    ) {
-        // TODO: Add animated grid lines
-        // For now, just a subtle gradient background
-    }
-}
-
-/**
- * Simple demo screen without map for testing UI
- */
-@Composable
-fun DemoNavigationScreen(
-    viewModel: NavigationViewModel = viewModel()
-) {
-    val uiState by viewModel.uiState.collectAsState()
-    val speed by viewModel.speed.collectAsState()
-
-    // Simulate updates
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1000)
-            viewModel.updateLocation(
-                org.maplibre.geojson.Point.fromLngLat(-122.4194, 37.7749),
-                (30..70).random().toFloat()
-            )
-            viewModel.updateSimulatedStats(
-                roadQuality = (80..98).random().toFloat(),
-                gForce = Random.nextDouble(0.5, 2.5).toFloat()
-            )
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(WayyColors.BgPrimary)
-    ) {
-        TopBar(
-            onMenuClick = {},
-            onSettingsClick = {},
-            isScanningActive = uiState.isScanning
-        )
-
-        Speedometer(
-            speed = speed,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(16.dp)
-        )
-
-        QuickActionsBar(
-            isNavigating = uiState.isNavigating,
-            isScanning = uiState.isScanning,
-            isARActive = uiState.isARMode,
-            is3DActive = uiState.is3DView,
-            onNavigateToggle = {
-                if (uiState.isNavigating) {
-                    viewModel.stopNavigation()
-                } else {
-                    viewModel.startNavigation(
-                        org.maplibre.geojson.Point.fromLngLat(-122.4094, 37.7849)
-                    )
-                }
-            },
-            onScanToggle = { viewModel.toggleScanning() },
-            onARModeToggle = { viewModel.toggleARMode() },
-            on3DViewToggle = { viewModel.toggle3DView() },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(16.dp)
-        )
     }
 }

@@ -1,6 +1,7 @@
 package com.wayy.map
 
 import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
@@ -81,7 +82,7 @@ class MapStyleManager {
         }
         """.trimIndent()
 
-        map.setStyle(styleJson) { style ->
+        map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
             android.util.Log.d("MapStyleManager", "Style loaded successfully with OSM tiles")
             onStyleLoaded()
         }

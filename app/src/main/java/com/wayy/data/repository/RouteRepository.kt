@@ -1,5 +1,6 @@
 package com.wayy.data.repository
 
+import android.util.Log
 import com.google.gson.Gson
 import com.wayy.data.model.OSRMResponse
 import com.wayy.data.model.PolylineDecoder
@@ -13,11 +14,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.maplibre.geojson.Point
 import java.io.IOException
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
-/**
- * Repository for routing operations using OSRM
- */
 class RouteRepository {
 
     private val client = OkHttpClient.Builder()
@@ -28,28 +27,16 @@ class RouteRepository {
     private val gson = Gson()
 
     companion object {
-        // Using public OSRM demo server
-        // For production, host your own OSRM instance
         private const val OSRM_BASE_URL = "https://router.project-osrm.org/route/v1/driving"
-
-        // Alternative servers you can use:
-        // "https://routing.openstreetmap.de/routed-car/route/v1/driving"
-        // "https://osrm.gosolve.nl/route/v1/driving"
     }
 
-    /**
-     * Get route from start to end coordinates
-     *
-     * @param start Starting point (longitude, latitude)
-     * @param end Ending point (longitude, latitude)
-     * @return Result containing Route or error
-     */
     suspend fun getRoute(
         start: Point,
         end: Point
     ): Result<Route> = withContext(Dispatchers.IO) {
         try {
             val url = "$OSRM_BASE_URL/${start.longitude()},${start.latitude()};${end.longitude()},${end.latitude()}?overview=full&geometries=polyline&steps=true"
+            Log.d("WayyRoute", "Requesting route: $url")
 
             val request = Request.Builder()
                 .url(url)
@@ -58,6 +45,7 @@ class RouteRepository {
             val response = client.newCall(request).execute()
 
             if (!response.isSuccessful) {
+                Log.w("WayyRoute", "OSRM request failed: ${response.code}")
                 return@withContext Result.failure(
                     IOException("OSRM request failed: ${response.code}")
                 )
@@ -65,6 +53,7 @@ class RouteRepository {
 
             val body = response.body?.string()
             if (body.isNullOrBlank()) {
+                Log.w("WayyRoute", "OSRM empty response")
                 return@withContext Result.failure(
                     IOException("Empty response from OSRM")
                 )
@@ -73,6 +62,7 @@ class RouteRepository {
             val osrmResponse = gson.fromJson(body, OSRMResponse::class.java)
 
             if (osrmResponse.code != "Ok" || osrmResponse.routes.isEmpty()) {
+                Log.w("WayyRoute", "OSRM no route found: ${osrmResponse.code}")
                 return@withContext Result.failure(
                     IOException("No route found")
                 )
@@ -83,29 +73,26 @@ class RouteRepository {
 
             Result.success(route)
         } catch (e: Exception) {
+            Log.e("WayyRoute", "OSRM request error", e)
             Result.failure(e)
         }
     }
 
-    /**
-     * Search for places (placeholder for future implementation)
-     * In a real app, you would use a geocoding API like Nominatim or Mapbox
-     */
     suspend fun searchPlaces(query: String): Result<List<PlaceResult>> =
         withContext(Dispatchers.IO) {
             try {
-                // Using Nominatim (OpenStreetMap) for geocoding
-                // This is a free service, but requires proper user agent
-                val url = "https://nominatim.openstreetmap.org/search?q=${query.encode()}&format=json&limit=5"
+                val url = "https://nominatim.openstreetmap.org/search?q=${URLEncoder.encode(query, "UTF-8")}&format=json&limit=5"
+                Log.d("WayySearch", "Searching: $url")
 
                 val request = Request.Builder()
                     .url(url)
-                    .addHeader("User-Agent", "Wayy/1.0")
+                    .addHeader("User-Agent", "WayyApp/1.0 (contact@wayy.app)")
                     .build()
 
                 val response = client.newCall(request).execute()
 
                 if (!response.isSuccessful) {
+                    Log.w("WayySearch", "Geocoding failed: ${response.code}")
                     return@withContext Result.failure(
                         IOException("Geocoding failed: ${response.code}")
                     )
@@ -113,26 +100,22 @@ class RouteRepository {
 
                 val body = response.body?.string()
                 if (body.isNullOrBlank()) {
+                    Log.w("WayySearch", "Empty geocoding response")
                     return@withContext Result.failure(
                         IOException("Empty geocoding response")
                     )
                 }
 
                 val places = gson.fromJson(body, Array<PlaceResult>::class.java).toList()
+                Log.d("WayySearch", "Geocoding results: ${places.size}")
                 Result.success(places)
             } catch (e: Exception) {
+                Log.e("WayySearch", "Geocoding error", e)
                 Result.failure(e)
             }
         }
-
-    private fun String.encode(): String {
-        return java.net.URLEncoder.encode(this, "UTF-8")
-    }
 }
 
-/**
- * Extension function to convert OSRM response to app Route model
- */
 private fun com.wayy.data.model.OSRMRoute.toRoute(): Route {
     val geometry = PolylineDecoder.decode(this.geometry)
 
@@ -174,9 +157,6 @@ private fun com.wayy.data.model.OSRMRoute.toRoute(): Route {
     )
 }
 
-/**
- * Simple place search result from geocoding
- */
 data class PlaceResult(
     val place_id: Long,
     val display_name: String,

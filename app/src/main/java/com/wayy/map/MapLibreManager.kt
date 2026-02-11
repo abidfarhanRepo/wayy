@@ -9,6 +9,7 @@ import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.OnMapReadyCallback
+import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
@@ -53,6 +54,8 @@ class MapLibreManager(private val context: Context) {
     ): MapView {
         val mapView = MapView(context)
         this.mapView = mapView
+
+        mapView.onCreate(null)
 
         mapView.getMapAsync { map ->
             this.mapLibreMap = map
@@ -102,7 +105,7 @@ class MapLibreManager(private val context: Context) {
         }
         """.trimIndent()
 
-        map.setStyle(styleJson) {
+        map.setStyle(Style.Builder().fromJson(styleJson)) {
             // Style loaded - hide UI elements for clean Waze-like look
             map.uiSettings.isCompassEnabled = false
             map.uiSettings.isLogoEnabled = false
@@ -215,4 +218,54 @@ class MapLibreManager(private val context: Context) {
      * Get the MapLibreMap instance for direct access
      */
     fun getMapLibreMap(): MapLibreMap? = mapLibreMap
+
+    /**
+     * Update user location marker position
+     */
+    fun updateUserLocation(location: LatLng, bearing: Float = 0f) {
+        mapLibreMap?.style?.let { style ->
+            val source = style.getSourceAs<GeoJsonSource>("location-source")
+            if (source != null) {
+                val point = Point.fromLngLat(location.longitude, location.latitude)
+                val feature = Feature.fromGeometry(point)
+                feature.addNumberProperty("bearing", bearing.toDouble())
+                source.setGeoJson(feature)
+            }
+        }
+    }
+
+    /**
+     * Animate camera to follow user with bearing
+     */
+    fun animateToLocationWithBearing(location: LatLng, bearing: Float, zoom: Double = 17.0, tilt: Double = 45.0) {
+        mapLibreMap?.let { map ->
+            val position = CameraPosition.Builder()
+                .target(location)
+                .zoom(zoom)
+                .bearing(bearing.toDouble())
+                .tilt(tilt)
+                .build()
+            map.animateCamera(CameraUpdateFactory.newCameraPosition(position), 500)
+        }
+    }
+
+    /**
+     * Center camera on user location (no bearing)
+     */
+    fun centerOnUserLocation(location: LatLng, zoom: Double = 15.0) {
+        mapLibreMap?.let { map ->
+            val position = CameraPosition.Builder()
+                .target(location)
+                .zoom(zoom)
+                .build()
+            map.easeCamera(CameraUpdateFactory.newCameraPosition(position), 300)
+        }
+    }
+
+    /**
+     * Enable/disable camera following user location
+     */
+    fun setCameraFollowEnabled(enabled: Boolean) {
+        mapLibreMap?.uiSettings?.isScrollGesturesEnabled = !enabled
+    }
 }

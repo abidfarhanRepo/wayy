@@ -1,5 +1,6 @@
 package com.wayy.ui.components.common
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -40,6 +41,7 @@ fun TopBar(
         modifier = modifier
             .fillMaxWidth()
             .statusBarsPadding()
+            .background(WayyColors.BgPrimary.copy(alpha = 0.85f))
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

@@ -1,69 +1,49 @@
 package com.wayy.data.model
 
-import com.google.gson.Gson
-import com.google.gson.JsonDeserializationContext
-import com.google.gson.JsonDeserializer
-import com.google.gson.JsonElement
 import org.maplibre.geojson.Point
-import java.lang.reflect.Type
-import kotlin.math.abs
 
-/**
- * Route data models
- */
+data class LatLng(
+    val latitude: Double,
+    val longitude: Double
+)
 
-/**
- * Complete route from OSRM
- */
 data class Route(
     val geometry: List<Point>,
-    val duration: Long,        // in seconds
-    val distance: Double,      // in meters
+    val duration: Double,
+    val distance: Double,
     val legs: List<RouteLeg>
 )
 
-/**
- * A segment of the route between two waypoints
- */
 data class RouteLeg(
     val steps: List<RouteStep>,
-    val distance: Double,      // in meters
-    val duration: Long         // in seconds
+    val distance: Double,
+    val duration: Double
 )
 
-/**
- * Single navigation instruction step
- */
 data class RouteStep(
     val instruction: String,
-    val distance: Double,      // in meters
-    val duration: Long,        // in seconds
+    val distance: Double,
+    val duration: Double,
     val maneuver: Maneuver,
     val geometry: List<Point>
 )
 
-/**
- * Turn maneuver information
- */
 data class Maneuver(
-    val type: String,          // turn, arrive, depart, etc.
-    val modifier: String?,     // left, right, uturn, etc.
+    val type: String,
+    val modifier: String?,
     val location: Point,
     val bearingBefore: Int,
     val bearingAfter: Int
 )
 
-/**
- * OSRM API response wrapper
- */
 data class OSRMResponse(
     val code: String,
     val routes: List<OSRMRoute>
 )
 
 data class OSRMRoute(
-    val geometry: String,          // Encoded polyline
-    val duration: Long,
+    val geometry: String,
+    val duration: Double,
     val distance: Double,
     val legs: List<OSRMLeg>
 )
@@ -71,13 +51,13 @@ data class OSRMRoute(
 data class OSRMLeg(
     val steps: List<OSRMStep>,
     val distance: Double,
-    val duration: Long
+    val duration: Double
 )
 
 data class OSRMStep(
     val maneuver: OSRMManeuver,
     val distance: Double,
-    val duration: Long,
+    val duration: Double,
     val geometry: String,
     val name: String
 )
@@ -90,9 +70,6 @@ data class OSRMManeuver(
     val bearing_after: Int
 )
 
-/**
- * Polyline decoder for OSRM geometry
- */
 object PolylineDecoder {
     fun decode(encoded: String): List<Point> {
         val points = mutableListOf<Point>()

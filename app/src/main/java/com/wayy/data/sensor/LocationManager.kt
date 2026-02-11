@@ -3,7 +3,11 @@ package com.wayy.data.sensor
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager as AndroidLocationManager
 import android.os.Looper
+import android.util.Log
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -11,13 +15,13 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 import org.maplibre.geojson.Point
-import com.google.android.gms.tasks.Task
-import com.google.android.gms.tasks.Tasks
 
 /**
  * Location manager using Google Play Services
@@ -26,6 +30,8 @@ class LocationManager(private val context: Context) {
 
     private val fusedLocationClient: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(context)
+    private val systemLocationManager: AndroidLocationManager =
+        context.getSystemService(Context.LOCATION_SERVICE) as AndroidLocationManager
 
     companion object {
         private const val LOCATION_UPDATE_INTERVAL = 1000L  // 1 second
@@ -50,9 +56,61 @@ class LocationManager(private val context: Context) {
 
         return try {
             val location = fusedLocationClient.lastLocation.await()
-            Point.fromLngLat(location.longitude, location.latitude)
+            if (location == null) {
+                Log.w("WayyLocation", "Last known location is null")
+                getSystemLastKnownLocation()
+            } else {
+                Log.d(
+                    "WayyLocation",
+                    "Last known location lat=${location.latitude}, lon=${location.longitude}"
+                )
+                Point.fromLngLat(location.longitude, location.latitude)
+            }
         } catch (e: Exception) {
+            Log.e("WayyLocation", "Last known location error", e)
             null
+        }
+    }
+
+    /**
+     * Request a current high-accuracy location fix.
+     */
+    suspend fun getCurrentLocation(): Point? {
+        if (!hasLocationPermission()) return null
+
+        return try {
+            val highAccuracy = withTimeoutOrNull(5000) {
+                requestCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY)
+            }
+            if (highAccuracy != null) {
+                highAccuracy
+            } else {
+                Log.w("WayyLocation", "High accuracy location null or timed out, falling back")
+                withTimeoutOrNull(5000) {
+                    requestCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("WayyLocation", "Current location error", e)
+            null
+        }
+    }
+
+    private suspend fun requestCurrentLocation(priority: Int): Point? {
+        val tokenSource = CancellationTokenSource()
+        val location = fusedLocationClient.getCurrentLocation(
+            priority,
+            tokenSource.token
+        ).await()
+        return if (location == null) {
+            Log.w("WayyLocation", "Current location is null for priority=$priority")
+            null
+        } else {
+            Log.d(
+                "WayyLocation",
+                "Current location lat=${location.latitude}, lon=${location.longitude}"
+            )
+            Point.fromLngLat(location.longitude, location.latitude)
         }
     }
 
@@ -61,21 +119,28 @@ class LocationManager(private val context: Context) {
      */
     fun startLocationUpdates(): Flow<LocationUpdate> = callbackFlow {
         if (!hasLocationPermission()) {
+            Log.w("WayyLocation", "Missing location permission")
             close()
             return@callbackFlow
         }
 
+        Log.d("WayyLocation", "Starting location updates")
+
         val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY,
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY,
             LOCATION_UPDATE_INTERVAL
         ).apply {
             setMinUpdateIntervalMillis(FASTEST_UPDATE_INTERVAL)
-            setWaitForAccurateLocation(true)
+            setMinUpdateDistanceMeters(1f)
         }.build()
 
         val locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 result.lastLocation?.let { location ->
+                    Log.d(
+                        "WayyLocation",
+                        "Location update lat=${location.latitude}, lon=${location.longitude}"
+                    )
                     val point = Point.fromLngLat(location.longitude, location.latitude)
                     val speed = if (location.hasSpeed()) location.speed * 2.23694f else 0f // m/s to mph
 
@@ -91,14 +156,88 @@ class LocationManager(private val context: Context) {
             }
         }
 
+        val systemListener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                Log.d(
+                    "WayyLocation",
+                    "System update lat=${location.latitude}, lon=${location.longitude}"
+                )
+                val point = Point.fromLngLat(location.longitude, location.latitude)
+                val speed = if (location.hasSpeed()) location.speed * 2.23694f else 0f
+                trySend(
+                    LocationUpdate(
+                        location = point,
+                        speed = speed,
+                        bearing = if (location.hasBearing()) location.bearing else 0f,
+                        accuracy = if (location.hasAccuracy()) location.accuracy else 0f
+                    )
+                )
+            }
+        }
+
         fusedLocationClient.requestLocationUpdates(
             locationRequest,
             locationCallback,
             Looper.getMainLooper()
         )
 
+        requestSystemLocationUpdates(systemListener)
+
         awaitClose {
+            Log.d("WayyLocation", "Stopping location updates")
             fusedLocationClient.removeLocationUpdates(locationCallback)
+            systemLocationManager.removeUpdates(systemListener)
+        }
+    }
+
+    private fun getSystemLastKnownLocation(): Point? {
+        val gpsLocation = runCatching {
+            systemLocationManager.getLastKnownLocation(AndroidLocationManager.GPS_PROVIDER)
+        }.getOrNull()
+        val networkLocation = runCatching {
+            systemLocationManager.getLastKnownLocation(AndroidLocationManager.NETWORK_PROVIDER)
+        }.getOrNull()
+
+        val bestLocation = listOfNotNull(gpsLocation, networkLocation).maxByOrNull { it.time }
+        return bestLocation?.let {
+            Log.d(
+                "WayyLocation",
+                "System last known lat=${it.latitude}, lon=${it.longitude}"
+            )
+            Point.fromLngLat(it.longitude, it.latitude)
+        }
+    }
+
+    private fun requestSystemLocationUpdates(listener: LocationListener) {
+        val providers = systemLocationManager.getProviders(true)
+        Log.d("WayyLocation", "System providers enabled: $providers")
+        runCatching {
+            if (systemLocationManager.isProviderEnabled(AndroidLocationManager.GPS_PROVIDER)) {
+                Log.d("WayyLocation", "Requesting GPS provider updates")
+                systemLocationManager.requestLocationUpdates(
+                    AndroidLocationManager.GPS_PROVIDER,
+                    LOCATION_UPDATE_INTERVAL,
+                    1f,
+                    listener,
+                    Looper.getMainLooper()
+                )
+            } else {
+                Log.w("WayyLocation", "GPS provider disabled")
+            }
+        }
+        runCatching {
+            if (systemLocationManager.isProviderEnabled(AndroidLocationManager.NETWORK_PROVIDER)) {
+                Log.d("WayyLocation", "Requesting network provider updates")
+                systemLocationManager.requestLocationUpdates(
+                    AndroidLocationManager.NETWORK_PROVIDER,
+                    LOCATION_UPDATE_INTERVAL,
+                    1f,
+                    listener,
+                    Looper.getMainLooper()
+                )
+            } else {
+                Log.w("WayyLocation", "Network provider disabled")
+            }
         }
     }
 

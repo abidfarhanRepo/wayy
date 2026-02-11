@@ -5,7 +5,6 @@ A modern Android navigation app with glassmorphism UI, real-time speedometer, an
 ## Features
 
 - **Glassmorphism UI** - Translucent panels with vibrant lime/cyan accents
-- **Real-time Speedometer** - Animated circular gauge with spring physics
 - **Navigation** - Route calculation using OSRM (no API key required)
 - **MapLibre Integration** - Open-source map rendering
 - **Location Services** - GPS tracking with Fused Location Provider
@@ -98,6 +97,19 @@ The app requires the following permissions:
 - **Repository Pattern** - Data layer abstraction
 - **StateFlow** - Reactive state management
 - **Dependency Injection** - Manual (can add Hilt later)
+
+## Current MVP Status (Implemented)
+
+- **Map rendering** with MapLibre + OSM tiles
+- **Live GPS location** with camera follow and user marker
+- **Destination search** via Nominatim (typed query → results list)
+- **Routing + navigation** via OSRM (route line + turn banner + ETA/remaining distance)
+- **Minimal navigation shell** focused on function (demo screens removed)
+
+## Current MVP Status (Pending)
+
+- **Route history** persistence + recent routes list
+- **Offline maps** and traffic/POI enhancements
 
 ## Future Enhancements
 

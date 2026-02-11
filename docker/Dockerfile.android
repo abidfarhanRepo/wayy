@@ -1,0 +1,40 @@
+# Wayy Android Build Dockerfile
+# Based on Eclipse Temurin JDK 17 for Gradle builds
+
+FROM eclipse-temurin:17-jdk
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+RUN apt-get update -qq && \
+    apt-get install -y -qq \
+    wget \
+    unzip \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV ANDROID_HOME=/opt/android-sdk
+ENV PATH="${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools"
+
+RUN wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip && \
+    mkdir -p ${ANDROID_SDK_ROOT}/cmdline-tools && \
+    unzip -q commandlinetools-linux-11076708_latest.zip -d ${ANDROID_SDK_ROOT}/cmdline-tools && \
+    mv ${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools ${ANDROID_SDK_ROOT}/cmdline-tools/latest && \
+    rm commandlinetools-linux-11076708_latest.zip
+
+RUN yes | sdkmanager --licenses > /dev/null 2>&1
+
+RUN sdkmanager \
+    "platform-tools" \
+    "platforms;android-34" \
+    "build-tools;34.0.0" > /dev/null 2>&1
+
+WORKDIR /workspace
+
+ENV GRADLE_OPTS="-Xmx4g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8"
+
+VOLUME ["/opt/android-sdk"]
+
+CMD ["./gradlew", "assembleDebug"]

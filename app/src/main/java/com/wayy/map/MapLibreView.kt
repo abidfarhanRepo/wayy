@@ -89,6 +89,11 @@ fun MapViewAutoLifecycle(
     // Handle lifecycle events
     DisposableEffect(lifecycle) {
         val observer = object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) {
+                super.onStart(owner)
+                mapView.onStart()
+            }
+
             override fun onResume(owner: LifecycleOwner) {
                 super.onResume(owner)
                 mapView.onResume()
@@ -97,6 +102,11 @@ fun MapViewAutoLifecycle(
             override fun onPause(owner: LifecycleOwner) {
                 super.onPause(owner)
                 mapView.onPause()
+            }
+
+            override fun onStop(owner: LifecycleOwner) {
+                super.onStop(owner)
+                mapView.onStop()
             }
 
             override fun onDestroy(owner: LifecycleOwner) {

@@ -1,0 +1,65 @@
+# Wayy Android Build Configuration
+# Docker containers for building the Wayy navigation app
+
+version: '3.8'
+
+services:
+  # Android Debug Builder
+  android-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile.android
+    container_name: wayy-android-builder
+    working_dir: /workspace
+    volumes:
+      - ..:/workspace:cached
+      - android-sdk-cache:/opt/android-sdk
+      - gradle-cache:/root/.gradle
+    environment:
+      - ANDROID_SDK_ROOT=/opt/android-sdk
+      - ANDROID_HOME=/opt/android-sdk
+    command: >
+      bash -c "
+        echo '=== Wayy Android Build ===' &&
+        echo 'Java version:' &&
+        java -version &&
+        echo '' &&
+        echo 'Writing local.properties...' &&
+        echo 'sdk.dir=/opt/android-sdk' > /workspace/local.properties &&
+        echo '' &&
+        echo 'Building debug APK...' &&
+        ./gradlew assembleDebug --no-daemon &&
+        echo '' &&
+        echo '=== Build Complete ===' &&
+        ls -lh app/build/outputs/apk/debug/*.apk
+      "
+
+  # Android Release Builder
+  android-builder-release:
+    build:
+      context: .
+      dockerfile: Dockerfile.android
+    container_name: wayy-android-builder-release
+    working_dir: /workspace
+    volumes:
+      - ..:/workspace:cached
+      - android-sdk-cache:/opt/android-sdk
+      - gradle-cache:/root/.gradle
+    environment:
+      - ANDROID_SDK_ROOT=/opt/android-sdk
+      - ANDROID_HOME=/opt/android-sdk
+    command: >
+      bash -c "
+        echo '=== Wayy Android Release Build ===' &&
+        echo 'sdk.dir=/opt/android-sdk' > /workspace/local.properties &&
+        ./gradlew assembleRelease --no-daemon &&
+        ls -lh app/build/outputs/apk/release/*.apk
+      "
+    profiles:
+      - release
+
+volumes:
+  android-sdk-cache:
+    driver: local
+  gradle-cache:
+    driver: local

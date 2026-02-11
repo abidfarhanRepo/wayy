@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.wayy.ui.components.glass.GlassCard
+import com.wayy.ui.components.glass.GlassCardElevated
 import com.wayy.ui.theme.WayyColors
 
 /**
@@ -38,9 +39,11 @@ fun ETACard(
     remainingDistance: String,
     modifier: Modifier = Modifier
 ) {
-    GlassCard(modifier = modifier) {
+    GlassCardElevated(modifier = modifier) {
         Row(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier
+                .background(WayyColors.BgSecondary.copy(alpha = 0.9f))
+                .padding(14.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
