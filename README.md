@@ -102,6 +102,40 @@ adb pull /data/data/com.wayy/files/diagnostics ./diagnostics
 
 The app auto-downloads a local offline region (~12 km radius) around your first GPS fix using the current map style URL. By default it uses OSM vector tiles via the shortbread style (`https://vector.openstreetmap.org/styles/shortbread/shadow.json`). For production or heavy use, switch to a self-hosted tile server to avoid public tile limits. Offline tiles are stored in `mbgl-offline.db` inside app storage.
 
+## Protomaps (Self-Hosted Qatar)
+
+Wayy supports Protomaps PMTiles served via `pmtiles serve` (ZXY + TileJSON). For Qatar, extract a regional PMTiles file and run the server locally:
+
+```bash
+# 1) Download a daily PMTiles build (example date) and extract Qatar
+docker pull protomaps/go-pmtiles
+docker run --rm -v $(pwd):/data protomaps/go-pmtiles \
+  extract https://build.protomaps.com/20260210.pmtiles /data/qatar.pmtiles \
+  --bbox=50.7500,24.4700,52.6500,26.6500
+
+# 2) Serve PMTiles as ZXY + TileJSON
+docker run --rm -p 8080:8080 -v $(pwd):/data protomaps/go-pmtiles \
+  serve /data --public-url http://<HOST_IP>:8080 --cors=*
+```
+
+This serves:
+```
+http://<HOST_IP>:8080/qatar.json
+http://<HOST_IP>:8080/qatar/{z}/{x}/{y}.mvt
+```
+
+Build the app to point at the TileJSON:
+
+```bash
+# Emulator: use 10.0.2.2
+./gradlew assembleDebug -Pwayy.pmtilesTilejsonUrl=http://10.0.2.2:8080/qatar.json
+
+# Physical device: use your machine's LAN IP
+./gradlew assembleDebug -Pwayy.pmtilesTilejsonUrl=http://<HOST_IP>:8080/qatar.json
+```
+
+When `wayy.pmtilesTilejsonUrl` is set, the app uses the bundled `protomaps_style.json` (dark flavor) with English labels.
+
 To use a self-hosted TileServer GL Light or Martin instance, pass a style URL at build time:
 
 ```bash

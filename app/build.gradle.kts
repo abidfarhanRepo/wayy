@@ -11,6 +11,8 @@ android {
 
     val mapStyleUrl = (project.findProperty("wayy.mapStyleUrl") as String?)
         ?: "https://vector.openstreetmap.org/styles/shortbread/shadow.json"
+    val pmtilesTilejsonUrl = (project.findProperty("wayy.pmtilesTilejsonUrl") as String?)
+        ?: ""
 
     defaultConfig {
         applicationId = "com.wayy"
@@ -20,6 +22,7 @@ android {
         versionName = "1.0"
 
         buildConfigField("String", "MAP_STYLE_URL", "\"$mapStyleUrl\"")
+        buildConfigField("String", "PMTILES_TILEJSON_URL", "\"$pmtilesTilejsonUrl\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

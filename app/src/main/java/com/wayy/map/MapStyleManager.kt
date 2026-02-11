@@ -1,5 +1,6 @@
 package com.wayy.map
 
+import android.content.Context
 import com.wayy.BuildConfig
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
@@ -17,10 +18,12 @@ import org.maplibre.android.style.layers.SymbolLayer
 /**
  * Map style manager for dark theme navigation maps
  */
-class MapStyleManager {
+class MapStyleManager(private val context: Context) {
 
     companion object {
         val STYLE_URI: String = BuildConfig.MAP_STYLE_URL.ifBlank { "asset://wayy_style.json" }
+        private const val PROTOMAPS_STYLE_ASSET = "protomaps_style.json"
+        private const val TILEJSON_PLACEHOLDER = "__TILEJSON_URL__"
 
         // Style constants
         const val ROUTE_SOURCE_ID = "route-source"
@@ -57,10 +60,22 @@ class MapStyleManager {
         map: MapLibreMap,
         onStyleLoaded: () -> Unit = {}
     ) {
-        map.setStyle(Style.Builder().fromUri(STYLE_URI)) { style ->
-            applyEnglishLabels(style)
-            android.util.Log.d("MapStyleManager", "Style loaded: $STYLE_URI")
-            onStyleLoaded()
+        val pmtilesTilejsonUrl = BuildConfig.PMTILES_TILEJSON_URL
+        if (pmtilesTilejsonUrl.isNotBlank()) {
+            val rawStyle = context.assets.open(PROTOMAPS_STYLE_ASSET)
+                .bufferedReader()
+                .use { it.readText() }
+            val styleJson = rawStyle.replace(TILEJSON_PLACEHOLDER, pmtilesTilejsonUrl)
+            map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
+                android.util.Log.d("MapStyleManager", "Style loaded: $PROTOMAPS_STYLE_ASSET")
+                onStyleLoaded()
+            }
+        } else {
+            map.setStyle(Style.Builder().fromUri(STYLE_URI)) { style ->
+                applyEnglishLabels(style)
+                android.util.Log.d("MapStyleManager", "Style loaded: $STYLE_URI")
+                onStyleLoaded()
+            }
         }
     }
 

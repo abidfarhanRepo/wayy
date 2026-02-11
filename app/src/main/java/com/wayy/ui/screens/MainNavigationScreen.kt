@@ -121,7 +121,7 @@ fun MainNavigationScreen(
     val coroutineScope = rememberCoroutineScope()
 
     val mapManager = remember { MapLibreManager(context) }
-    val mapStyleManager = remember { MapStyleManager() }
+    val mapStyleManager = remember { MapStyleManager(context) }
     val wazeStyleManager = remember { WazeStyleManager() }
     val locationManager = remember { LocationManager(context) }
     val orientationManager = remember { DeviceOrientationManager(context) }
