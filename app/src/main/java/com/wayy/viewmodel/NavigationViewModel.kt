@@ -13,6 +13,7 @@ import com.wayy.data.repository.RouteHistoryManager
 import com.wayy.data.model.Route
 import com.wayy.data.repository.PlaceResult
 import com.wayy.data.repository.RouteRepository
+import com.wayy.ml.OnDeviceMlManager
 import com.wayy.navigation.NavigationUtils
 import com.wayy.navigation.RerouteResult
 import com.wayy.navigation.RerouteUtils
@@ -103,7 +104,8 @@ class NavigationViewModel(
     private val localPoiManager: LocalPoiManager? = null,
     private val trafficReportManager: TrafficReportManager? = null,
     private val tripLoggingManager: TripLoggingManager? = null,
-    private val diagnosticLogger: DiagnosticLogger? = null
+    private val diagnosticLogger: DiagnosticLogger? = null,
+    private val mlManager: OnDeviceMlManager? = null
 ) : ViewModel() {
 
     var isDemoMode: Boolean = false
@@ -448,8 +450,30 @@ class NavigationViewModel(
     }
 
     fun toggleScanning() {
+        setScanningEnabled(!_uiState.value.isScanning)
+    }
+
+    fun setScanningEnabled(enabled: Boolean) {
+        val manager = mlManager
+        if (manager == null) {
+            _uiState.value = _uiState.value.copy(
+                error = "ML manager not available"
+            )
+            return
+        }
+        if (enabled) {
+            val availability = manager.start()
+            if (!availability.isAvailable) {
+                _uiState.value = _uiState.value.copy(
+                    error = availability.message ?: "ML model not available"
+                )
+                return
+            }
+        } else {
+            manager.stop()
+        }
         _uiState.value = _uiState.value.copy(
-            isScanning = !_uiState.value.isScanning
+            isScanning = enabled
         )
     }
 

@@ -34,6 +34,7 @@ import com.wayy.data.repository.RouteHistoryManager
 import com.wayy.data.repository.TrafficReportManager
 import com.wayy.viewmodel.NavigationViewModel
 import com.wayy.debug.DiagnosticLogger
+import com.wayy.ml.OnDeviceMlManager
 import org.maplibre.geojson.Point
 
 /**
@@ -109,12 +110,14 @@ fun AppContent(
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 if (modelClass.isAssignableFrom(NavigationViewModel::class.java)) {
                     @Suppress("UNCHECKED_CAST")
+                    val diagnosticLogger = DiagnosticLogger(context)
                     return NavigationViewModel(
                         routeHistoryManager = RouteHistoryManager(context),
                         localPoiManager = LocalPoiManager(context),
                         trafficReportManager = TrafficReportManager(context),
                         tripLoggingManager = TripLoggingManager(context),
-                        diagnosticLogger = DiagnosticLogger(context)
+                        diagnosticLogger = diagnosticLogger,
+                        mlManager = OnDeviceMlManager(context, diagnosticLogger)
                     ) as T
                 }
                 throw IllegalArgumentException("Unknown ViewModel class")

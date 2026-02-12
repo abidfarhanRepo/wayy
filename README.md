@@ -152,6 +152,23 @@ docker run -v $(pwd)/tiles:/data -p 8080:8080 maptiler/tileserver-gl-light
 
 This same style URL is used for offline downloads, so the device will cache tiles from your server. Map tile requests include a Wayy User-Agent header and cache responses for up to 7 days. Label language is forced to English when available (`name:en` → `name` fallback).
 
+## ML & Data Collection Roadmap
+
+Current status: ML is not implemented yet (no training containers, no data pipeline, no model serving). The UI exposes a **beta on-device scanning toggle**, but no model is bundled by default.
+
+**Phase 1 (Now): On-device inference only**
+- Use pre-trained TF Lite models (lane detection, traffic signs, object detection).
+- Models run locally on the phone (optional toggle).
+- Drop a model file at `app/src/main/assets/ml/model.tflite` to enable scanning.
+
+**Phase 2: Opt-in data collection**
+- Add upload service for user-approved clips/frames.
+- Annotation pipeline + storage.
+
+**Phase 3: Fine-tuning**
+- Train on collected data (no from-scratch training).
+- Iterate for Qatar-specific accuracy.
+
 ## Geocoding
 
 Search uses Nominatim with a Photon fallback when rate-limited (e.g. HTTP 509/429).

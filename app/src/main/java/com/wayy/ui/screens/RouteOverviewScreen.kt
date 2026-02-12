@@ -38,6 +38,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -97,7 +98,8 @@ fun RouteOverviewScreen(
     val searchError by viewModel.searchError.collectAsState()
     val localPois = viewModel.localPois?.collectAsState()?.value.orEmpty()
     val recentRoutes = viewModel.recentRoutes?.collectAsState()?.value.orEmpty()
-    val currentLocation = viewModel.uiState.collectAsState().value.currentLocation
+    val uiState by viewModel.uiState.collectAsState()
+    val currentLocation = uiState.currentLocation
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -281,6 +283,48 @@ fun RouteOverviewScreen(
                             enabled = currentLocation != null
                         ) {
                             Text("Download Offline Area")
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "On-device ML (beta)",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Runs models locally on the phone. Requires app/src/main/assets/ml/model.tflite.",
+                            color = WayyColors.TextSecondary,
+                            fontSize = 12.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Enable scanning",
+                                color = WayyColors.TextSecondary,
+                                fontSize = 12.sp
+                            )
+                            Switch(
+                                checked = uiState.isScanning,
+                                onCheckedChange = { enabled ->
+                                    viewModel.setScanningEnabled(enabled)
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            if (enabled) "ML scanning enabled" else "ML scanning disabled"
+                                        )
+                                    }
+                                }
+                            )
                         }
                     }
                 }

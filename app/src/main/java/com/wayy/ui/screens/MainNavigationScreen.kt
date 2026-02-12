@@ -584,7 +584,7 @@ fun MainNavigationScreen(
             TopBar(
                 onMenuClick = onMenuClick,
                 onSettingsClick = onSettingsClick,
-                isScanningActive = false,
+                isScanningActive = uiState.isScanning,
                 showSettings = false,
                 modifier = Modifier.align(Alignment.TopCenter)
             )

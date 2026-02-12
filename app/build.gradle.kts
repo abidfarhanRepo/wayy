@@ -115,6 +115,10 @@ dependencies {
     // AR (optional)
     implementation("com.google.ar:core:1.41.0")
 
+    // On-device ML (TensorFlow Lite)
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
