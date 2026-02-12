@@ -178,6 +178,40 @@ Place the model at `app/src/main/assets/ml/model.tflite` (already downloaded on 
 app/src/main/assets/ml/model.tflite
 ```
 
+## Training Pipeline (Drive Data → Improved Models)
+
+This pipeline uses capture exports (video + GPS/time/speed metadata) to build datasets and fine-tune models over time.
+
+### 1) Export drives from the phone
+Use **Settings → Export Capture + Logs** to generate `wayy_export_*.zip`.
+
+### 2) Prepare a dataset manifest
+```
+python3 scripts/ml_pipeline/prepare_wayy_exports.py \
+  --input /path/to/exports \
+  --output ml_pipeline/wayy_dataset \
+  --copy-media \
+  --extract-frames \
+  --frame-rate 2
+```
+
+This produces:
+- `ml_pipeline/wayy_dataset/wayy_locations.jsonl` (GPS/time/speed per frame)
+- `ml_pipeline/wayy_dataset/captures/` (video + metadata)
+- `ml_pipeline/wayy_dataset/frames/` (optional extracted frames)
+
+### 3) Label & train
+Label frames with your tool (e.g., CVAT) and export YOLO labels. Then fine-tune:
+```
+python3 scripts/ml_pipeline/train_yolo.py \
+  --data /path/to/data.yaml \
+  --base-model app/src/main/assets/ml/yolov8n.pt \
+  --epochs 50 --imgsz 640 --export-tflite
+```
+
+### 4) Deploy
+Replace `app/src/main/assets/ml/model.tflite` with the new model and rebuild the APK.
+
 ## Geocoding
 
 Search uses Nominatim with a Photon fallback when rate-limited (e.g. HTTP 509/429).
