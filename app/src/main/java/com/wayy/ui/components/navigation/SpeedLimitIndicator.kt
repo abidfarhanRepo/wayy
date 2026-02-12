@@ -17,14 +17,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.wayy.ui.theme.WayyColors
 
+private const val MPH_TO_KMH = 1.60934f
+
 @Composable
 fun SpeedLimitIndicator(
     speedLimitMph: Int,
     currentSpeedMph: Float,
     modifier: Modifier = Modifier
 ) {
-    val isOverLimit = currentSpeedMph > speedLimitMph
-    val isApproachingLimit = currentSpeedMph > speedLimitMph * 0.9f && !isOverLimit
+    val speedLimitKmh = speedLimitMph * MPH_TO_KMH
+    val currentSpeedKmh = currentSpeedMph * MPH_TO_KMH
+    val isOverLimit = currentSpeedKmh > speedLimitKmh
+    val isApproachingLimit = currentSpeedKmh > speedLimitKmh * 0.9f && !isOverLimit
 
     val bgColor = when {
         isOverLimit -> WayyColors.Error
@@ -49,14 +53,14 @@ fun SpeedLimitIndicator(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = speedLimitMph.toString(),
+                text = speedLimitKmh.toInt().toString(),
                 color = textColor,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
             Text(
-                text = "MPH",
+                text = "KM/H",
                 color = textColor.copy(alpha = 0.7f),
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
@@ -72,8 +76,10 @@ fun SpeedLimitWarning(
     currentSpeedMph: Float,
     modifier: Modifier = Modifier
 ) {
-    val isOverLimit = currentSpeedMph > speedLimitMph
-    val overAmount = (currentSpeedMph - speedLimitMph).toInt()
+    val speedLimitKmh = speedLimitMph * MPH_TO_KMH
+    val currentSpeedKmh = currentSpeedMph * MPH_TO_KMH
+    val isOverLimit = currentSpeedKmh > speedLimitKmh
+    val overAmount = (currentSpeedKmh - speedLimitKmh).toInt()
 
     if (isOverLimit && overAmount > 5) {
         Row(
@@ -91,7 +97,7 @@ fun SpeedLimitWarning(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "MPH over",
+                text = "KM/H over",
                 color = Color.White.copy(alpha = 0.8f),
                 fontSize = 12.sp
             )

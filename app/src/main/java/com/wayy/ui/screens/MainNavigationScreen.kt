@@ -107,6 +107,9 @@ import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import java.util.Locale
 
+private const val MPH_TO_KMH = 1.60934f
+private const val MPS_TO_KMH = 3.6f
+
 /**
  * Minimal MVP navigation screen (map + GPS + search + route)
  */
@@ -813,13 +816,14 @@ fun MainNavigationScreen(
             val reportCount = trafficReports.count { report ->
                 report.streetName?.equals(currentStreet, ignoreCase = true) == true
             }
-            val speedText = String.format(Locale.US, "%.0f mph", uiState.currentSpeed)
-            val trafficAvgMphText = trafficSpeedMps?.let { speed ->
-                String.format(Locale.US, "%.0f mph", speed * 2.23694)
+            val speedKmh = uiState.currentSpeed * MPH_TO_KMH
+            val speedText = String.format(Locale.US, "%.0f km/h", speedKmh)
+            val trafficAvgKmhText = trafficSpeedMps?.let { speed ->
+                String.format(Locale.US, "%.0f km/h", speed * MPS_TO_KMH)
             }
             val trafficSeverity = resolveTrafficSeverity(trafficSpeedMps)
                 .replaceFirstChar { it.titlecase(Locale.US) }
-            val trafficLabel = trafficAvgMphText?.let {
+            val trafficLabel = trafficAvgKmhText?.let {
                 "Traffic $trafficSeverity $it"
             } ?: "Traffic $trafficSeverity"
             val metricsText = listOfNotNull(
@@ -874,7 +878,8 @@ fun MainNavigationScreen(
         }
 
         SpeedometerSmall(
-            speed = uiState.currentSpeed,
+            speed = uiState.currentSpeed * MPH_TO_KMH,
+            unit = "km/h",
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .navigationBarsPadding()

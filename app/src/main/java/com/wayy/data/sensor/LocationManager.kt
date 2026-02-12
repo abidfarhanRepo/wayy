@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
 import org.maplibre.geojson.Point
+import kotlin.math.abs
 
 /**
  * Location manager using Google Play Services
@@ -32,6 +33,8 @@ class LocationManager(private val context: Context) {
         LocationServices.getFusedLocationProviderClient(context)
     private val systemLocationManager: AndroidLocationManager =
         context.getSystemService(Context.LOCATION_SERVICE) as AndroidLocationManager
+    private var lastLocation: Location? = null
+    private var lastLocationTimestampNanos: Long? = null
 
     companion object {
         private const val LOCATION_UPDATE_INTERVAL = 1000L  // 1 second
@@ -142,7 +145,8 @@ class LocationManager(private val context: Context) {
                         "Location update lat=${location.latitude}, lon=${location.longitude}"
                     )
                     val point = Point.fromLngLat(location.longitude, location.latitude)
-                    val speed = if (location.hasSpeed()) location.speed * 2.23694f else 0f // m/s to mph
+                    val speedMps = resolveSpeedMps(location)
+                    val speed = speedMps * 2.23694f // m/s to mph
 
                     trySend(
                         LocationUpdate(
@@ -163,7 +167,8 @@ class LocationManager(private val context: Context) {
                     "System update lat=${location.latitude}, lon=${location.longitude}"
                 )
                 val point = Point.fromLngLat(location.longitude, location.latitude)
-                val speed = if (location.hasSpeed()) location.speed * 2.23694f else 0f
+                val speedMps = resolveSpeedMps(location)
+                val speed = speedMps * 2.23694f
                 trySend(
                     LocationUpdate(
                         location = point,
@@ -238,6 +243,40 @@ class LocationManager(private val context: Context) {
             } else {
                 Log.w("WayyLocation", "Network provider disabled")
             }
+        }
+    }
+
+    private fun resolveSpeedMps(location: Location): Float {
+        val reported = if (location.hasSpeed()) location.speed else 0f
+        val computed = computeSpeedFromDelta(location)
+        val useComputed = computed > 0f && (reported <= 0.5f || kotlin.math.abs(reported - computed) > 3f)
+        return if (useComputed) computed else reported
+    }
+
+    private fun computeSpeedFromDelta(location: Location): Float {
+        val previous = lastLocation
+        val previousTimestamp = lastLocationTimestampNanos
+        val currentTimestamp = resolveTimestampNanos(location)
+        var speedMps = 0f
+
+        if (previous != null && previousTimestamp != null && currentTimestamp > previousTimestamp) {
+            val deltaSeconds = (currentTimestamp - previousTimestamp) / 1_000_000_000.0
+            if (deltaSeconds > 0) {
+                val distance = location.distanceTo(previous)
+                speedMps = (distance / deltaSeconds).toFloat()
+            }
+        }
+
+        lastLocation = location
+        lastLocationTimestampNanos = currentTimestamp
+        return speedMps
+    }
+
+    private fun resolveTimestampNanos(location: Location): Long {
+        return if (location.elapsedRealtimeNanos > 0L) {
+            location.elapsedRealtimeNanos
+        } else {
+            location.time * 1_000_000L
         }
     }
 

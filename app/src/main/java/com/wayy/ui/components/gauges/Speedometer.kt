@@ -34,14 +34,14 @@ import kotlin.math.min
  * @param speed Current speed value
  * @param maxSpeed Maximum speed for the gauge
  * @param modifier Modifier for the speedometer
- * @param unit Speed unit label (default: "mph")
+ * @param unit Speed unit label (default: "km/h")
  */
 @Composable
 fun Speedometer(
     speed: Float,
     maxSpeed: Float = 120f,
     modifier: Modifier = Modifier,
-    unit: String = "mph"
+    unit: String = "km/h"
 ) {
     // Animated speed value with spring physics
     val animatedSpeed by animateFloatAsState(
@@ -144,7 +144,7 @@ fun SpeedometerSmall(
     speed: Float,
     maxSpeed: Float = 120f,
     modifier: Modifier = Modifier,
-    unit: String = "mph"
+    unit: String = "km/h"
 ) {
     val animatedSpeed by animateFloatAsState(
         targetValue = speed,
