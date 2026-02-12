@@ -93,6 +93,7 @@ import com.wayy.ui.theme.WayyColors
 import com.wayy.viewmodel.ARMode
 import com.wayy.viewmodel.NavigationState
 import com.wayy.viewmodel.NavigationViewModel
+import com.wayy.ml.MlFrameAnalyzer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.maplibre.android.geometry.LatLng
@@ -132,6 +133,16 @@ fun MainNavigationScreen(
     val captureController = remember { NavigationCaptureController(context) }
     val diagnosticLogger = remember { DiagnosticLogger(context) }
     val offlineMapManager = remember { OfflineMapManager(context, diagnosticLogger) }
+    val mlManager = remember { viewModel.getMlManager() }
+    val scanningState = rememberUpdatedState(uiState.isScanning)
+    val mlAnalyzer = remember(mlManager, diagnosticLogger) {
+        mlManager?.let { manager ->
+            MlFrameAnalyzer(
+                mlManager = manager,
+                diagnosticLogger = diagnosticLogger
+            ) { scanningState.value }
+        }
+    }
     var videoCapture by remember { mutableStateOf<androidx.camera.video.VideoCapture<androidx.camera.video.Recorder>?>(null) }
     var offlineRequested by remember { mutableStateOf(false) }
     val localPois = viewModel.localPois?.collectAsState()?.value.orEmpty()
@@ -371,6 +382,7 @@ fun MainNavigationScreen(
                         videoCapture = capture
                         captureController.attachVideoCapture(capture)
                     },
+                    frameAnalyzer = mlAnalyzer,
                     onError = { error ->
                         diagnosticLogger.log(tag = "WayyAR", message = "Camera error", level = "WARN", data = mapOf("error" to error))
                     }
@@ -611,6 +623,7 @@ fun MainNavigationScreen(
                 isApproaching = uiState.isApproachingTurn,
                 lanes = laneConfigs,
                 hasCameraPermission = hasCameraPermission,
+                frameAnalyzer = mlAnalyzer,
                 onVideoCaptureReady = { capture ->
                     videoCapture = capture
                     captureController.attachVideoCapture(capture)

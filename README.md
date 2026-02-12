@@ -159,15 +159,24 @@ Current status: ML is not implemented yet (no training containers, no data pipel
 **Phase 1 (Now): On-device inference only**
 - Use pre-trained TF Lite models (lane detection, traffic signs, object detection).
 - Models run locally on the phone (optional toggle).
-- Drop a model file at `app/src/main/assets/ml/model.tflite` to enable scanning.
+- Drop a model file at `app/src/main/assets/ml/model.tflite` to enable scanning (we now support YOLOv8n Float16 there).
+- Scanning uses live camera frames and currently runs when the camera preview is active (AR/PIP mode).
 
 **Phase 2: Opt-in data collection**
-- Add upload service for user-approved clips/frames.
-- Annotation pipeline + storage.
+- Export drive captures, then upload to a secure bucket with explicit opt-in.
+- Annotation pipeline + storage (lanes, signs, behavior tags).
+- Training data is Qatar-first and curated from your drives.
 
 **Phase 3: Fine-tuning**
 - Train on collected data (no from-scratch training).
 - Iterate for Qatar-specific accuracy.
+
+### Option 1 (Fastest): Pre-converted model
+Place the model at `app/src/main/assets/ml/model.tflite` (already downloaded on your machine).
+
+```
+app/src/main/assets/ml/model.tflite
+```
 
 ## Geocoding
 

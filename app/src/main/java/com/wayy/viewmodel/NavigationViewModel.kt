@@ -477,6 +477,8 @@ class NavigationViewModel(
         )
     }
 
+    fun getMlManager(): OnDeviceMlManager? = mlManager
+
     fun toggleARMode() {
         val nextMode = when (_uiState.value.arMode) {
             ARMode.DISABLED -> ARMode.PIP_OVERLAY
