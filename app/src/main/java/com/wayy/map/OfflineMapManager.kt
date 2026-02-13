@@ -39,7 +39,14 @@ class OfflineMapManager(
         })
     }
 
-    fun ensureRegion(center: LatLng, radiusKm: Double = 10.0, minZoom: Double = 12.0, maxZoom: Double = 18.0) {
+    fun ensureRegion(
+        center: LatLng,
+        radiusKm: Double = 10.0,
+        minZoom: Double = 12.0,
+        maxZoom: Double = 18.0,
+        tilejsonUrlOverride: String? = null,
+        mapStyleUrlOverride: String? = null
+    ) {
         if (isDownloading) return
         offlineManager.listOfflineRegions(object : OfflineManager.ListOfflineRegionsCallback {
             override fun onList(offlineRegions: Array<OfflineRegion>?) {
@@ -47,20 +54,27 @@ class OfflineMapManager(
                     diagnosticLogger.log(tag = TAG, message = "Offline region already exists")
                     return
                 }
-                createRegion(center, radiusKm, minZoom, maxZoom)
+                createRegion(center, radiusKm, minZoom, maxZoom, tilejsonUrlOverride, mapStyleUrlOverride)
             }
 
             override fun onError(error: String) {
                 diagnosticLogger.log(tag = TAG, message = "Offline list error", level = "ERROR", data = mapOf("error" to error))
-                createRegion(center, radiusKm, minZoom, maxZoom)
+                createRegion(center, radiusKm, minZoom, maxZoom, tilejsonUrlOverride, mapStyleUrlOverride)
             }
         })
     }
 
-    private fun createRegion(center: LatLng, radiusKm: Double, minZoom: Double, maxZoom: Double) {
+    private fun createRegion(
+        center: LatLng,
+        radiusKm: Double,
+        minZoom: Double,
+        maxZoom: Double,
+        tilejsonUrlOverride: String?,
+        mapStyleUrlOverride: String?
+    ) {
         val bounds = buildBounds(center, radiusKm)
         val definition = OfflineTilePyramidRegionDefinition(
-            resolveStyleUrl(),
+            resolveStyleUrl(tilejsonUrlOverride, mapStyleUrlOverride),
             bounds,
             minZoom,
             maxZoom,
@@ -134,10 +148,13 @@ class OfflineMapManager(
         return LatLngBounds.from(northeast.latitude, northeast.longitude, southwest.latitude, southwest.longitude)
     }
 
-    private fun resolveStyleUrl(): String {
-        val tilejsonUrl = BuildConfig.PMTILES_TILEJSON_URL
+    private fun resolveStyleUrl(tilejsonUrlOverride: String?, mapStyleUrlOverride: String?): String {
+        val tilejsonUrl = tilejsonUrlOverride?.trim().orEmpty()
+            .ifBlank { BuildConfig.PMTILES_TILEJSON_URL }
         if (tilejsonUrl.isBlank()) {
-            return MapStyleManager.STYLE_URI
+            val styleUrl = mapStyleUrlOverride?.trim().orEmpty()
+                .ifBlank { BuildConfig.MAP_STYLE_URL }
+            return styleUrl.ifBlank { MapStyleManager.STYLE_URI }
         }
         cacheStyleFile.parentFile?.mkdirs()
         val rawStyle = context.assets.open(PROTOMAPS_STYLE_ASSET)

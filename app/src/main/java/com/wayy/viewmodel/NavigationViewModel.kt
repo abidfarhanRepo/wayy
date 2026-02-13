@@ -73,6 +73,7 @@ data class NavigationUiState(
     val currentLocation: Point? = null,
     val currentBearing: Float = 0f,
     val currentSpeed: Float = 0f,
+    val currentAccuracyMeters: Float? = null,
     val nextDirection: Direction = Direction.STRAIGHT,
     val nextNextDirection: Direction = Direction.STRAIGHT,
     val distanceToTurn: String = "",
@@ -117,6 +118,12 @@ class NavigationViewModel(
     private var lastTrafficHistoryKey: String? = null
     private var lastTrafficHistoryRefreshTime: Long = 0L
     private var lastLocationLogTime: Long = 0L
+    private var lastSpeedSample: Pair<Point, Long>? = null
+    private var lastSpeedTimestampMs: Long? = null
+    private var lastSpeedMps: Float? = null
+    private var lowSpeedStartMs: Long? = null
+    private val gravityMps2 = 9.80665f
+    private val roadQualityScaleG = 0.35f
 
     private val trafficRefreshIntervalMs = 10_000L
     private val trafficHistoryRefreshIntervalMs = 60_000L
@@ -453,7 +460,7 @@ class NavigationViewModel(
         setScanningEnabled(!_uiState.value.isScanning)
     }
 
-    fun setScanningEnabled(enabled: Boolean) {
+    fun setScanningEnabled(enabled: Boolean, modelPath: String? = null) {
         val manager = mlManager
         if (manager == null) {
             _uiState.value = _uiState.value.copy(
@@ -462,7 +469,7 @@ class NavigationViewModel(
             return
         }
         if (enabled) {
-            val availability = manager.start()
+            val availability = manager.start(modelPath ?: OnDeviceMlManager.DEFAULT_MODEL_ASSET)
             if (!availability.isAvailable) {
                 _uiState.value = _uiState.value.copy(
                     error = availability.message ?: "ML model not available"
@@ -561,19 +568,63 @@ class NavigationViewModel(
         bearing: Float = 0f,
         accuracy: Float = 0f
     ) {
+        val now = System.currentTimeMillis()
+        val derivedSpeedMph = lastSpeedSample?.let { (prevPoint, prevTime) ->
+            val deltaSec = (now - prevTime) / 1000.0
+            if (deltaSec > 0) {
+                val distanceMeters = NavigationUtils.calculateDistanceMeters(prevPoint, location)
+                (distanceMeters / deltaSec) * 2.23694
+            } else {
+                null
+            }
+        }
+        lastSpeedSample = location to now
+        var normalizedSpeed = when {
+            speed < 1.0f && accuracy > 0f -> 0f
+            derivedSpeedMph != null && derivedSpeedMph < 1.5 -> 0f
+            derivedSpeedMph != null && derivedSpeedMph < speed && derivedSpeedMph < 8.0 -> derivedSpeedMph.toFloat()
+            else -> speed
+        }
+        val stopCandidate = normalizedSpeed < 2.0f
+        if (stopCandidate) {
+            if (lowSpeedStartMs == null) {
+                lowSpeedStartMs = now
+            }
+        } else {
+            lowSpeedStartMs = null
+        }
+        if (stopCandidate && lowSpeedStartMs != null && now - lowSpeedStartMs!! > 2000) {
+            normalizedSpeed = 0f
+        }
+        val speedMps = normalizedSpeed / 2.23694f
+        val gForce = lastSpeedMps?.let { previous ->
+            val previousTime = lastSpeedTimestampMs
+            val deltaSec = previousTime?.let { (now - it) / 1000.0 } ?: 0.0
+            if (deltaSec > 0.0) {
+                kotlin.math.abs((speedMps - previous) / deltaSec) / gravityMps2
+            } else {
+                0.0
+            }
+        } ?: 0.0
+        lastSpeedMps = speedMps
+        lastSpeedTimestampMs = now
+        val roadQuality = (1.0 - (gForce / roadQualityScaleG).coerceIn(0.0, 1.0)).toFloat()
         _uiState.value = _uiState.value.copy(
             currentLocation = location,
             currentBearing = bearing,
-            currentSpeed = speed
+            currentSpeed = normalizedSpeed,
+            currentAccuracyMeters = accuracy.takeIf { it > 0f },
+            roadQuality = roadQuality,
+            gForce = gForce.toFloat()
         )
-        _speed.value = speed
+        _speed.value = normalizedSpeed
         _bearing.value = bearing
 
-        logLocationIfNeeded(location, speed, bearing, accuracy)
+        logLocationIfNeeded(location, normalizedSpeed, bearing, accuracy)
 
         if (_uiState.value.isNavigating) {
-            updateNavigationProgress(location, speed)
-            logTripSample(location, speed, bearing, accuracy)
+            updateNavigationProgress(location, normalizedSpeed)
+            logTripSample(location, normalizedSpeed, bearing, accuracy)
         }
     }
 

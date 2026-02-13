@@ -183,12 +183,20 @@ app/src/main/assets/ml/model.tflite
 This pipeline uses capture exports (video + GPS/time/speed metadata) to build datasets and fine-tune models over time.
 
 ### 1) Export drives from the phone
-Use **Settings → Export Capture + Logs** to generate `wayy_export_*.zip`.
+Use **Settings → Export Capture + Logs** to generate `wayy_export_*.zip`, then place it in the repo `exports/` folder.
+
+```
+mkdir -p exports
+# Option A: copy wayy_export_*.zip into ./exports
+# Option B (ADB raw capture):
+# adb pull /data/data/com.wayy/files/capture ./exports/<stamp>/capture
+# adb pull /data/data/com.wayy/files/diagnostics ./exports/<stamp>/diagnostics
+```
 
 ### 2) Prepare a dataset manifest
 ```
 python3 scripts/ml_pipeline/prepare_wayy_exports.py \
-  --input /path/to/exports \
+  --input exports \
   --output ml_pipeline/wayy_dataset \
   --copy-media \
   --extract-frames \
@@ -199,6 +207,18 @@ This produces:
 - `ml_pipeline/wayy_dataset/wayy_locations.jsonl` (GPS/time/speed per frame)
 - `ml_pipeline/wayy_dataset/captures/` (video + metadata)
 - `ml_pipeline/wayy_dataset/frames/` (optional extracted frames)
+
+### 2b) Automated local pipeline (watch folder)
+```
+pip install ultralytics
+python3 scripts/ml_pipeline/run_pipeline.py --watch
+```
+
+Outputs:
+- `ml_pipeline/output/<export_id>/road_conditions.geojson`
+- `ml_pipeline/output/<export_id>/traffic_segments.geojson`
+- `ml_pipeline/output/<export_id>/summary.json`
+- `ml_pipeline/output/latest/*` (most recent artifacts)
 
 ### 3) Label & train
 Label frames with your tool (e.g., CVAT) and export YOLO labels. Then fine-tune:

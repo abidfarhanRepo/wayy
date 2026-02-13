@@ -58,22 +58,29 @@ class MapStyleManager(private val context: Context) {
       */
     fun applyDarkStyle(
         map: MapLibreMap,
+        tilejsonUrlOverride: String? = null,
+        mapStyleUrlOverride: String? = null,
         onStyleLoaded: () -> Unit = {}
     ) {
-        val pmtilesTilejsonUrl = BuildConfig.PMTILES_TILEJSON_URL
+        val pmtilesTilejsonUrl = tilejsonUrlOverride?.trim().orEmpty()
+            .ifBlank { BuildConfig.PMTILES_TILEJSON_URL }
         if (pmtilesTilejsonUrl.isNotBlank()) {
             val rawStyle = context.assets.open(PROTOMAPS_STYLE_ASSET)
                 .bufferedReader()
                 .use { it.readText() }
             val styleJson = rawStyle.replace(TILEJSON_PLACEHOLDER, pmtilesTilejsonUrl)
             map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
+                applyEnglishLabels(style)
                 android.util.Log.d("MapStyleManager", "Style loaded: $PROTOMAPS_STYLE_ASSET")
                 onStyleLoaded()
             }
         } else {
-            map.setStyle(Style.Builder().fromUri(STYLE_URI)) { style ->
+            val styleUri = mapStyleUrlOverride?.trim().orEmpty()
+                .ifBlank { BuildConfig.MAP_STYLE_URL }
+                .ifBlank { "asset://wayy_style.json" }
+            map.setStyle(Style.Builder().fromUri(styleUri)) { style ->
                 applyEnglishLabels(style)
-                android.util.Log.d("MapStyleManager", "Style loaded: $STYLE_URI")
+                android.util.Log.d("MapStyleManager", "Style loaded: $styleUri")
                 onStyleLoaded()
             }
         }

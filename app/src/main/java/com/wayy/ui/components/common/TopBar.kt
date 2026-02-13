@@ -1,11 +1,17 @@
 package com.wayy.ui.components.common
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
@@ -28,6 +34,7 @@ import com.wayy.ui.theme.WayyColors
  * @param onMenuClick Callback for menu button
  * @param onSettingsClick Callback for settings button
  * @param isScanningActive Whether scanning is currently active
+ * @param gpsAccuracyMeters Latest GPS accuracy estimate (meters)
  * @param showSettings Whether to show settings button
  * @param modifier Modifier for the bar
  */
@@ -36,6 +43,7 @@ fun TopBar(
     onMenuClick: () -> Unit,
     onSettingsClick: () -> Unit,
     isScanningActive: Boolean = false,
+    gpsAccuracyMeters: Float? = null,
     showSettings: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -66,8 +74,12 @@ fun TopBar(
             )
 
             if (isScanningActive) {
+                Spacer(modifier = Modifier.width(6.dp))
                 ScanningIndicator()
             }
+
+            Spacer(modifier = Modifier.width(8.dp))
+            GpsStrengthIndicator(accuracyMeters = gpsAccuracyMeters)
         }
 
         Spacer(modifier = Modifier.weight(1f))
@@ -90,4 +102,30 @@ private fun ScanningIndicator() {
     androidx.compose.animation.core.Animatable(0f)
     androidx.compose.animation.core.rememberInfiniteTransition()
     // TODO: Add pulsing dot animation
+}
+
+@Composable
+private fun GpsStrengthIndicator(
+    accuracyMeters: Float?
+) {
+    val (label, color) = when {
+        accuracyMeters == null -> "GPS --" to WayyColors.TextSecondary
+        accuracyMeters <= 5f -> "GPS Strong" to WayyColors.Success
+        accuracyMeters <= 15f -> "GPS Ok" to WayyColors.Warning
+        else -> "GPS Weak" to WayyColors.Error
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(color = color, shape = CircleShape)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = label,
+            color = WayyColors.TextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
 }

@@ -1,12 +1,19 @@
 package com.wayy.ui.screens
 
 import android.Manifest
+import android.os.Handler
+import android.os.Looper
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
@@ -58,12 +65,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.util.Log
 import androidx.compose.runtime.rememberUpdatedState
+import com.wayy.data.settings.MapSettings
+import com.wayy.data.settings.MapSettingsRepository
 import com.wayy.data.sensor.LocationManager
 import com.wayy.data.sensor.DeviceOrientationManager
 import com.wayy.data.repository.LocalPoiItem
@@ -81,10 +93,13 @@ import com.wayy.map.OfflineMapManager
 import com.wayy.navigation.NavigationUtils
 import com.wayy.ui.components.camera.CameraPreviewCard
 import com.wayy.ui.components.camera.CameraPreviewSurface
+import com.wayy.ui.components.camera.ArVisionOverlay
 import com.wayy.ui.components.camera.LaneConfig
 import com.wayy.ui.components.camera.LaneGuidanceOverlay
 import com.wayy.ui.components.camera.TurnArrowOverlay
 import com.wayy.ui.components.common.QuickActionsBar
+import com.wayy.ui.components.common.RoadQualityCard
+import com.wayy.ui.components.common.GForceCard
 import com.wayy.ui.components.common.TopBar
 import com.wayy.ui.components.glass.GlassIconButton
 import com.wayy.ui.components.gauges.SpeedometerSmall
@@ -94,8 +109,14 @@ import com.wayy.viewmodel.ARMode
 import com.wayy.viewmodel.NavigationState
 import com.wayy.viewmodel.NavigationViewModel
 import com.wayy.ml.MlFrameAnalyzer
+import com.wayy.ml.MlDetection
+import com.wayy.ml.DetectionTracker
+import com.wayy.ml.LaneSegmentationManager
+import com.wayy.ml.LaneSegmentationResult
+import com.wayy.ui.components.glass.GlassCardElevated
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.camera.CameraPosition
@@ -110,6 +131,7 @@ import java.util.Locale
 
 private const val MPH_TO_KMH = 1.60934f
 private const val MPS_TO_KMH = 3.6f
+private const val LANE_MODEL_PATH = "file:///data/data/com.wayy/files/models/lane_model.tflite"
 
 /**
  * Minimal MVP navigation screen (map + GPS + search + route)
@@ -133,24 +155,48 @@ fun MainNavigationScreen(
     val captureController = remember { NavigationCaptureController(context) }
     val diagnosticLogger = remember { DiagnosticLogger(context) }
     val offlineMapManager = remember { OfflineMapManager(context, diagnosticLogger) }
+    val mapSettingsRepository = remember { MapSettingsRepository(context) }
+    val mapSettings by mapSettingsRepository.settingsFlow.collectAsState(initial = MapSettings())
     val mlManager = remember { viewModel.getMlManager() }
+    val laneManager = remember { LaneSegmentationManager(context, diagnosticLogger) }
+    val detectionTracker = remember { DetectionTracker() }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    var lastInferenceMs by remember { mutableStateOf<Double?>(null) }
+    var lastDetections by remember { mutableStateOf(emptyList<MlDetection>()) }
+    var laneResult by remember { mutableStateOf<LaneSegmentationResult?>(null) }
     val scanningState = rememberUpdatedState(uiState.isScanning)
-    val mlAnalyzer = remember(mlManager, diagnosticLogger) {
+    val mlAnalyzer = remember(mlManager, diagnosticLogger, mainHandler) {
         mlManager?.let { manager ->
             MlFrameAnalyzer(
                 mlManager = manager,
-                diagnosticLogger = diagnosticLogger
-            ) { scanningState.value }
+                diagnosticLogger = diagnosticLogger,
+                isEnabled = { scanningState.value },
+                onInference = { result ->
+                    mainHandler.post {
+                        lastInferenceMs = result.inferenceMs
+                        lastDetections = detectionTracker.update(result.detections)
+                    }
+                },
+                laneManager = laneManager,
+                onLaneResult = { result ->
+                    mainHandler.post { laneResult = result }
+                }
+            )
         }
     }
     var videoCapture by remember { mutableStateOf<androidx.camera.video.VideoCapture<androidx.camera.video.Recorder>?>(null) }
     var offlineRequested by remember { mutableStateOf(false) }
+    var captureStartMs by remember { mutableStateOf<Long?>(null) }
+    var captureElapsedMs by remember { mutableStateOf(0L) }
     val localPois = viewModel.localPois?.collectAsState()?.value.orEmpty()
     val trafficReports = viewModel.trafficReports?.collectAsState()?.value.orEmpty()
     val trafficSegments = viewModel.trafficSegments.collectAsState().value
     val trafficSpeedMps by viewModel.trafficSpeedMps.collectAsState()
     val latestPois = rememberUpdatedState(localPois)
     val deviceBearing by orientationManager.currentBearing.collectAsState()
+    val activity = context as? Activity
+    val tilejsonOverride = mapSettings.tilejsonUrl
+    val mapStyleOverride = mapSettings.mapStyleUrl
 
     fun resolveTrafficSeverity(speedMps: Double?): String {
         val speed = speedMps ?: return "moderate"
@@ -169,6 +215,87 @@ fun MainNavigationScreen(
     var pendingPoiLocation by remember { mutableStateOf<Point?>(null) }
     var addPoiName by remember { mutableStateOf("") }
     var addPoiCategory by remember { mutableStateOf("general") }
+
+    fun configureMapStyle(map: MapLibreMap) {
+        mapStyleManager.applyDarkStyle(
+            map,
+            tilejsonUrlOverride = tilejsonOverride,
+            mapStyleUrlOverride = mapStyleOverride
+        ) {
+            map.cameraPosition = CameraPosition.Builder()
+                .target(LatLng(25.2854, 51.5310))
+                .zoom(13.0)
+                .bearing(0.0)
+                .build()
+
+            val locationSource = GeoJsonSource(
+                MapStyleManager.LOCATION_SOURCE_ID,
+                Feature.fromGeometry(Point.fromLngLat(51.5310, 25.2854))
+            )
+            map.style?.addSource(locationSource)
+            wazeStyleManager.addUserLocationMarker(map, MapStyleManager.LOCATION_SOURCE_ID)
+
+            val poiSource = GeoJsonSource(
+                MapStyleManager.POI_SOURCE_ID,
+                FeatureCollection.fromFeatures(emptyArray())
+            )
+            val trafficSource = GeoJsonSource(
+                MapStyleManager.TRAFFIC_SOURCE_ID,
+                FeatureCollection.fromFeatures(emptyArray())
+            )
+            val trafficIntensitySource = GeoJsonSource(
+                MapStyleManager.TRAFFIC_INTENSITY_SOURCE_ID,
+                FeatureCollection.fromFeatures(emptyArray())
+            )
+            map.style?.addSource(poiSource)
+            map.style?.addSource(trafficSource)
+            map.style?.addSource(trafficIntensitySource)
+            mapStyleManager.addPoiLayer(map, MapStyleManager.POI_SOURCE_ID)
+            mapStyleManager.addTrafficLayer(map, MapStyleManager.TRAFFIC_SOURCE_ID)
+            mapStyleManager.addTrafficPulseLayer(map, MapStyleManager.TRAFFIC_SOURCE_ID)
+            mapStyleManager.addTrafficIntensityLayer(
+                map,
+                MapStyleManager.TRAFFIC_INTENSITY_SOURCE_ID
+            )
+
+            uiState.currentLocation?.let { location ->
+                mapManager.updateUserLocation(
+                    LatLng(location.latitude(), location.longitude())
+                )
+                mapManager.centerOnUserLocation(
+                    LatLng(location.latitude(), location.longitude())
+                )
+            }
+
+            map.addOnMapClickListener { latLng ->
+                val screenPoint = map.projection.toScreenLocation(latLng)
+                val features = map.queryRenderedFeatures(
+                    screenPoint,
+                    MapStyleManager.POI_LAYER_ID
+                )
+                val poiId = features.firstOrNull()?.getStringProperty("id")
+                val match = poiId?.let { id ->
+                    latestPois.value.firstOrNull { poi -> poi.id == id }
+                }
+                selectedPoi = match
+                match != null
+            }
+
+            map.addOnMapLongClickListener { latLng ->
+                pendingPoiLocation = Point.fromLngLat(latLng.longitude, latLng.latitude)
+                addPoiName = ""
+                addPoiCategory = "general"
+                showAddPoiDialog = true
+                true
+            }
+        }
+    }
+
+    LaunchedEffect(tilejsonOverride, mapStyleOverride) {
+        mapManager.getMapLibreMap()?.let { map ->
+            configureMapStyle(map)
+        }
+    }
 
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -249,7 +376,9 @@ fun MainNavigationScreen(
                 if (!offlineRequested) {
                     offlineMapManager.ensureRegion(
                         center = LatLng(location.latitude(), location.longitude()),
-                        radiusKm = 12.0
+                        radiusKm = 12.0,
+                        tilejsonUrlOverride = tilejsonOverride,
+                        mapStyleUrlOverride = mapStyleOverride
                     )
                     offlineRequested = true
                 }
@@ -260,6 +389,23 @@ fun MainNavigationScreen(
     LaunchedEffect(uiState.arMode, hasCameraPermission) {
         if (uiState.arMode != ARMode.DISABLED && !hasCameraPermission) {
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    LaunchedEffect(uiState.arMode) {
+        activity?.requestedOrientation = if (uiState.arMode == ARMode.FULL_AR) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+
+    LaunchedEffect(uiState.isScanning) {
+        if (uiState.isScanning) {
+            laneManager.start(LANE_MODEL_PATH)
+        } else {
+            laneManager.stop()
+            laneResult = null
         }
     }
 
@@ -339,6 +485,9 @@ fun MainNavigationScreen(
     LaunchedEffect(shouldCapture, videoCapture, uiState.currentRoute, uiState.arMode) {
         val capture = videoCapture
         if (shouldCapture && capture != null) {
+            if (captureStartMs == null) {
+                captureStartMs = System.currentTimeMillis()
+            }
             captureController.startIfNeeded(
                 capture,
                 CaptureSessionInfo(
@@ -351,7 +500,7 @@ fun MainNavigationScreen(
                 )
             )
             diagnosticLogger.log(tag = "WayyCapture", message = "Capture started")
-        } else {
+        } else if (!shouldCapture) {
             captureController.stop(
                 CaptureSessionInfo(
                     timestamp = System.currentTimeMillis(),
@@ -359,13 +508,25 @@ fun MainNavigationScreen(
                 )
             )
             diagnosticLogger.log(tag = "WayyCapture", message = "Capture stopped")
-            if (shouldCapture && capture == null) {
-                diagnosticLogger.log(
-                    tag = "WayyCapture",
-                    message = "Capture pending; video pipeline not ready",
-                    level = "WARN"
-                )
-            }
+            captureStartMs = null
+        } else if (capture == null) {
+            diagnosticLogger.log(
+                tag = "WayyCapture",
+                message = "Capture pending; video pipeline not ready",
+                level = "WARN"
+            )
+        }
+    }
+
+    LaunchedEffect(captureStartMs) {
+        val start = captureStartMs
+        if (start == null) {
+            captureElapsedMs = 0L
+            return@LaunchedEffect
+        }
+        while (true) {
+            captureElapsedMs = System.currentTimeMillis() - start
+            delay(1000)
         }
     }
 
@@ -376,17 +537,30 @@ fun MainNavigationScreen(
     ) {
         if (uiState.arMode == ARMode.FULL_AR) {
             if (hasCameraPermission) {
-                CameraPreviewSurface(
-                    modifier = Modifier.fillMaxSize(),
-                    onVideoCaptureReady = { capture ->
-                        videoCapture = capture
-                        captureController.attachVideoCapture(capture)
-                    },
-                    frameAnalyzer = mlAnalyzer,
-                    onError = { error ->
-                        diagnosticLogger.log(tag = "WayyAR", message = "Camera error", level = "WARN", data = mapOf("error" to error))
-                    }
-                )
+                androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
+                    CameraPreviewSurface(
+                        modifier = Modifier.fillMaxSize(),
+                        onVideoCaptureReady = { capture ->
+                            videoCapture = capture
+                            captureController.attachVideoCapture(capture)
+                        },
+                        frameAnalyzer = mlAnalyzer,
+                        onError = { error ->
+                            diagnosticLogger.log(tag = "WayyAR", message = "Camera error", level = "WARN", data = mapOf("error" to error))
+                        }
+                    )
+                    ArVisionOverlay(
+                        detections = lastDetections,
+                        showLanes = true,
+                        showBoxes = uiState.isScanning,
+                        leftLane = laneResult?.leftLane.orEmpty(),
+                        rightLane = laneResult?.rightLane.orEmpty(),
+                        deviceBearing = uiState.deviceBearing,
+                        turnBearing = uiState.turnBearing,
+                        isApproaching = uiState.isApproachingTurn,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             } else {
                 androidx.compose.foundation.layout.Box(
                     modifier = Modifier
@@ -406,74 +580,7 @@ fun MainNavigationScreen(
                 manager = mapManager,
                 modifier = Modifier.fillMaxSize(),
                 onMapReady = { map ->
-                    mapStyleManager.applyDarkStyle(map) {
-                        map.cameraPosition = CameraPosition.Builder()
-                            .target(LatLng(25.2854, 51.5310))
-                            .zoom(13.0)
-                            .bearing(0.0)
-                            .build()
-
-                        val locationSource = GeoJsonSource(
-                            MapStyleManager.LOCATION_SOURCE_ID,
-                            Feature.fromGeometry(Point.fromLngLat(51.5310, 25.2854))
-                        )
-                        map.style?.addSource(locationSource)
-                        wazeStyleManager.addUserLocationMarker(map, MapStyleManager.LOCATION_SOURCE_ID)
-
-                        val poiSource = GeoJsonSource(
-                            MapStyleManager.POI_SOURCE_ID,
-                            FeatureCollection.fromFeatures(emptyArray())
-                        )
-                        val trafficSource = GeoJsonSource(
-                            MapStyleManager.TRAFFIC_SOURCE_ID,
-                            FeatureCollection.fromFeatures(emptyArray())
-                        )
-                        val trafficIntensitySource = GeoJsonSource(
-                            MapStyleManager.TRAFFIC_INTENSITY_SOURCE_ID,
-                            FeatureCollection.fromFeatures(emptyArray())
-                        )
-                        map.style?.addSource(poiSource)
-                        map.style?.addSource(trafficSource)
-                        map.style?.addSource(trafficIntensitySource)
-                        mapStyleManager.addPoiLayer(map, MapStyleManager.POI_SOURCE_ID)
-                        mapStyleManager.addTrafficLayer(map, MapStyleManager.TRAFFIC_SOURCE_ID)
-                        mapStyleManager.addTrafficPulseLayer(map, MapStyleManager.TRAFFIC_SOURCE_ID)
-                        mapStyleManager.addTrafficIntensityLayer(
-                            map,
-                            MapStyleManager.TRAFFIC_INTENSITY_SOURCE_ID
-                        )
-
-                        uiState.currentLocation?.let { location ->
-                            mapManager.updateUserLocation(
-                                LatLng(location.latitude(), location.longitude())
-                            )
-                            mapManager.centerOnUserLocation(
-                                LatLng(location.latitude(), location.longitude())
-                            )
-                        }
-
-                        map.addOnMapClickListener { latLng ->
-                            val screenPoint = map.projection.toScreenLocation(latLng)
-                            val features = map.queryRenderedFeatures(
-                                screenPoint,
-                                MapStyleManager.POI_LAYER_ID
-                            )
-                            val poiId = features.firstOrNull()?.getStringProperty("id")
-                            val match = poiId?.let { id ->
-                                latestPois.value.firstOrNull { poi -> poi.id == id }
-                            }
-                            selectedPoi = match
-                            match != null
-                        }
-
-                        map.addOnMapLongClickListener { latLng ->
-                            pendingPoiLocation = Point.fromLngLat(latLng.longitude, latLng.latitude)
-                            addPoiName = ""
-                            addPoiCategory = "general"
-                            showAddPoiDialog = true
-                            true
-                        }
-                    }
+                    configureMapStyle(map)
                 }
             )
         }
@@ -592,11 +699,12 @@ fun MainNavigationScreen(
             }
         }
 
-        if (!uiState.isNavigating) {
+        if (!uiState.isNavigating && uiState.arMode == ARMode.DISABLED) {
             TopBar(
                 onMenuClick = onMenuClick,
                 onSettingsClick = onSettingsClick,
                 isScanningActive = uiState.isScanning,
+                gpsAccuracyMeters = uiState.currentAccuracyMeters,
                 showSettings = false,
                 modifier = Modifier.align(Alignment.TopCenter)
             )
@@ -609,9 +717,9 @@ fun MainNavigationScreen(
         AnimatedVisibility(
             visible = uiState.arMode == ARMode.PIP_OVERLAY,
             modifier = Modifier
-                .align(Alignment.BottomStart)
+                .align(Alignment.BottomEnd)
                 .navigationBarsPadding()
-                .padding(16.dp),
+                .padding(end = 16.dp, bottom = 120.dp),
             enter = slideInVertically(initialOffsetY = { it }) + scaleIn() + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }) + scaleOut() + fadeOut()
         ) {
@@ -622,6 +730,12 @@ fun MainNavigationScreen(
                 turnBearing = uiState.turnBearing,
                 isApproaching = uiState.isApproachingTurn,
                 lanes = laneConfigs,
+                showGuidance = uiState.isNavigating,
+                detections = lastDetections,
+                showBoxes = uiState.isScanning,
+                showLanes = true,
+                leftLane = laneResult?.leftLane.orEmpty(),
+                rightLane = laneResult?.rightLane.orEmpty(),
                 hasCameraPermission = hasCameraPermission,
                 frameAnalyzer = mlAnalyzer,
                 onVideoCaptureReady = { capture ->
@@ -646,6 +760,54 @@ fun MainNavigationScreen(
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
                     .padding(bottom = 24.dp)
+            )
+        }
+
+        if (uiState.arMode != ARMode.DISABLED) {
+            val trafficSeverity = trafficSpeedMps?.let { resolveTrafficSeverity(it) }
+            ArStatusHud(
+                isScanning = uiState.isScanning,
+                arMode = uiState.arMode,
+                trafficSeverity = trafficSeverity,
+                lastInferenceMs = lastInferenceMs,
+                objectCount = lastDetections.size,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(top = 12.dp, end = 16.dp)
+            )
+        }
+
+        if (uiState.arMode != ARMode.DISABLED) {
+            val roadQualityText = if (uiState.roadQuality > 0f) {
+                "${(uiState.roadQuality * 100).toInt()}%"
+            } else {
+                "--"
+            }
+            val gForceText = if (uiState.gForce > 0f) {
+                String.format(Locale.US, "%.2fg", uiState.gForce)
+            } else {
+                "--"
+            }
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(top = 56.dp, start = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                RoadQualityCard(quality = roadQualityText)
+                GForceCard(gForce = gForceText)
+            }
+        }
+
+        if (captureStartMs != null) {
+            CaptureTimerHud(
+                elapsedMs = captureElapsedMs,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(top = 12.dp, start = 16.dp)
             )
         }
 
@@ -945,9 +1107,10 @@ private fun TrafficHistoryChart(bars: List<Double>) {
                     .background(
                         color = WayyColors.PrimaryCyan.copy(alpha = 0.85f),
                         shape = RoundedCornerShape(4.dp)
-                    )
+                )
             )
         }
+
     }
 }
 
@@ -968,6 +1131,92 @@ private fun buildTrafficHistoryBars(
         if (speeds.isNotEmpty()) speeds.average() else 0.0
     }
     return buckets
+}
+
+@Composable
+private fun CaptureTimerHud(
+    elapsedMs: Long,
+    modifier: Modifier = Modifier
+) {
+    val totalSeconds = (elapsedMs / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    val label = String.format(Locale.US, "REC %02d:%02d", minutes, seconds)
+    GlassCardElevated(modifier = modifier) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Spacer(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(WayyColors.Error, RoundedCornerShape(4.dp))
+            )
+            Text(
+                text = label,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
+private fun ArStatusHud(
+    isScanning: Boolean,
+    arMode: ARMode,
+    trafficSeverity: String?,
+    lastInferenceMs: Double?,
+    objectCount: Int,
+    modifier: Modifier = Modifier
+) {
+    val arLabel = when (arMode) {
+        ARMode.FULL_AR -> "AR: Full"
+        ARMode.PIP_OVERLAY -> "AR: PiP"
+        ARMode.DISABLED -> "AR: Off"
+    }
+    val mlLabel = if (isScanning) "ML: On" else "ML: Off"
+    val inferenceLabel = when {
+        !isScanning -> "Inference: --"
+        lastInferenceMs != null -> "Inference ${lastInferenceMs.toInt()}ms"
+        else -> "Inference --"
+    }
+    val objectLabel = if (isScanning) "Objects ${objectCount}" else "Objects --"
+    val trafficLabel = trafficSeverity?.let {
+        "Traffic: ${it.replaceFirstChar { c -> c.titlecase() }}"
+    } ?: "Traffic: --"
+    val transition = rememberInfiniteTransition(label = "mlPulse")
+    val pulse by transition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "mlPulseAlpha"
+    )
+    val pulseAlpha = if (isScanning) pulse else 0.4f
+    GlassCardElevated(modifier = modifier) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(text = arLabel, color = Color.White, fontSize = 12.sp)
+            Text(text = mlLabel, color = WayyColors.TextSecondary, fontSize = 11.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Spacer(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(
+                            color = WayyColors.PrimaryLime.copy(alpha = pulseAlpha),
+                            shape = RoundedCornerShape(3.dp)
+                        )
+                )
+                Text(text = inferenceLabel, color = WayyColors.TextSecondary, fontSize = 11.sp)
+            }
+            Text(text = objectLabel, color = WayyColors.TextSecondary, fontSize = 11.sp)
+            Text(text = trafficLabel, color = WayyColors.TextSecondary, fontSize = 11.sp)
+        }
+    }
 }
 
 private fun buildLaneConfigs(direction: com.wayy.ui.components.navigation.Direction): List<LaneConfig> {

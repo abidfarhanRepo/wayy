@@ -35,6 +35,10 @@ proguard/
 # Android Studio captures folder
 captures/
 
+# Local exports & ML pipeline outputs
+exports/
+ml_pipeline/output/
+
 # Local screenshots
 wayy.png
 

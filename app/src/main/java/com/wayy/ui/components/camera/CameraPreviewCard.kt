@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.sp
 import com.wayy.ui.components.glass.GlassCardElevated
 import com.wayy.ui.components.navigation.Direction
 import com.wayy.ui.theme.WayyColors
+import com.wayy.ml.MlDetection
+import com.wayy.ml.LanePoint
 
 @Composable
 fun CameraPreviewCard(
@@ -27,6 +29,12 @@ fun CameraPreviewCard(
     turnBearing: Float,
     isApproaching: Boolean,
     lanes: List<LaneConfig>,
+    showGuidance: Boolean = true,
+    detections: List<MlDetection> = emptyList(),
+    showBoxes: Boolean = false,
+    showLanes: Boolean = true,
+    leftLane: List<LanePoint> = emptyList(),
+    rightLane: List<LanePoint> = emptyList(),
     hasCameraPermission: Boolean,
     onVideoCaptureReady: ((androidx.camera.video.VideoCapture<androidx.camera.video.Recorder>) -> Unit)? = null,
     frameAnalyzer: androidx.camera.core.ImageAnalysis.Analyzer? = null,
@@ -63,23 +71,39 @@ fun CameraPreviewCard(
                 }
             }
 
-            TurnArrowOverlay(
-                direction = direction,
-                distanceToTurnMeters = distanceToTurnMeters,
-                deviceBearing = deviceBearing,
-                turnBearing = turnBearing,
-                isApproaching = isApproaching,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(8.dp)
-            )
+            if (showGuidance) {
+                TurnArrowOverlay(
+                    direction = direction,
+                    distanceToTurnMeters = distanceToTurnMeters,
+                    deviceBearing = deviceBearing,
+                    turnBearing = turnBearing,
+                    isApproaching = isApproaching,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(8.dp)
+                )
 
-            LaneGuidanceOverlay(
-                lanes = lanes,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(8.dp)
-            )
+                LaneGuidanceOverlay(
+                    lanes = lanes,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(8.dp)
+                )
+            }
+
+            if (hasCameraPermission) {
+                ArVisionOverlay(
+                    detections = detections,
+                    showLanes = showLanes,
+                    showBoxes = showBoxes,
+                    leftLane = leftLane,
+                    rightLane = rightLane,
+                    deviceBearing = deviceBearing,
+                    turnBearing = turnBearing,
+                    isApproaching = isApproaching,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
     }
 }

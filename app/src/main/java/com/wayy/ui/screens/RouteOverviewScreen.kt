@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -34,6 +36,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.FilterChip
@@ -60,9 +63,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.wayy.BuildConfig
 import com.wayy.data.repository.RouteHistoryItem
 import com.wayy.data.repository.LocalPoiItem
 import com.wayy.data.repository.PlaceResult
+import com.wayy.capture.CaptureStorageManager
+import com.wayy.data.settings.MlSettings
+import com.wayy.data.settings.MlSettingsRepository
+import com.wayy.data.settings.DEFAULT_MODEL_PATH
+import com.wayy.data.settings.MapSettings
+import com.wayy.data.settings.MapSettingsRepository
 import com.wayy.debug.DiagnosticLogger
 import com.wayy.debug.ExportBundleManager
 import com.wayy.map.OfflineMapManager
@@ -74,7 +84,10 @@ import com.wayy.viewmodel.NavigationViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.maplibre.geojson.Point
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+import java.io.File
 
 /**
  * Route overview screen for searching and selecting destinations
@@ -105,8 +118,18 @@ fun RouteOverviewScreen(
     val context = LocalContext.current
     val exportManager = remember { ExportBundleManager(context, DiagnosticLogger(context)) }
     val offlineMapManager = remember { OfflineMapManager(context, DiagnosticLogger(context)) }
+    val captureStorageManager = remember { CaptureStorageManager(context) }
+    val mapSettingsRepository = remember { MapSettingsRepository(context) }
+    val mapSettings by mapSettingsRepository.settingsFlow.collectAsState(initial = MapSettings())
+    val mlSettingsRepository = remember { MlSettingsRepository(context) }
+    val mlSettings by mlSettingsRepository.settingsFlow.collectAsState(initial = MlSettings())
     var offlineSummary by remember { mutableStateOf<OfflineSummary?>(null) }
     var offlineRadius by remember { mutableStateOf(12.0) }
+    var tilejsonInput by remember { mutableStateOf("") }
+    var styleUrlInput by remember { mutableStateOf("") }
+    var pendingDeletePoi by remember { mutableStateOf<LocalPoiItem?>(null) }
+    var captureEntries by remember { mutableStateOf<List<CaptureEntry>>(emptyList()) }
+    val exeedModelPath = "file://${context.filesDir}/models/exeed_model.tflite"
     val showSearchResults = searchQuery.trim().length >= 3
     val filteredPois = localPois.filter { poi ->
         selectedCategory == "all" || poi.category.lowercase() == selectedCategory
@@ -142,6 +165,17 @@ fun RouteOverviewScreen(
         offlineMapManager.loadSummary { summary ->
             offlineSummary = summary
         }
+    }
+
+    LaunchedEffect(activeTab) {
+        if (activeTab == RouteOverviewTab.CAPTURES) {
+            captureEntries = loadCaptureEntries(captureStorageManager)
+        }
+    }
+
+    LaunchedEffect(mapSettings) {
+        tilejsonInput = mapSettings.tilejsonUrl
+        styleUrlInput = mapSettings.mapStyleUrl
     }
 
     Box(
@@ -213,163 +247,343 @@ fun RouteOverviewScreen(
                     onClick = { activeTab = RouteOverviewTab.SETTINGS },
                     label = { Text("Settings") }
                 )
+                FilterChip(
+                    selected = activeTab == RouteOverviewTab.CAPTURES,
+                    onClick = { activeTab = RouteOverviewTab.CAPTURES },
+                    label = { Text("Captures") }
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
             if (activeTab == RouteOverviewTab.SETTINGS) {
-                GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = "Offline Maps",
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp
-                        )
-                        val summary = offlineSummary
-                        val summaryText = if (summary == null) {
-                            "Checking offline data..."
-                        } else {
-                            val regions = if (summary.regionCount == 0) {
-                                "No areas saved"
-                            } else {
-                                "${summary.regionCount} area${if (summary.regionCount == 1) "" else "s"} saved"
-                            }
-                            val status = if (summary.isDownloading) "Downloading" else "Idle"
-                            "$regions • ${formatBytes(summary.dbSizeBytes)} • $status"
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = summaryText,
-                            color = WayyColors.TextSecondary,
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(5.0, 12.0, 20.0).forEach { radius ->
-                                FilterChip(
-                                    selected = offlineRadius == radius,
-                                    onClick = { offlineRadius = radius },
-                                    label = { Text("${radius.toInt()} km") }
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(
-                            onClick = {
-                                val location = currentLocation
-                                if (location == null) {
-                                    coroutineScope.launch {
-                                        snackbarHostState.showSnackbar("Location required for offline download")
-                                    }
-                                } else {
-                                    offlineMapManager.ensureRegion(
-                                        center = org.maplibre.android.geometry.LatLng(
-                                            location.latitude(),
-                                            location.longitude()
-                                        ),
-                                        radiusKm = offlineRadius,
-                                        minZoom = 12.0,
-                                        maxZoom = 19.0
-                                    )
-                                    offlineMapManager.loadSummary { summary ->
-                                        offlineSummary = summary
-                                    }
-                                    coroutineScope.launch {
-                                        snackbarHostState.showSnackbar("Offline download started")
-                                    }
-                                }
-                            },
-                            enabled = currentLocation != null
-                        ) {
-                            Text("Download Offline Area")
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = "On-device ML (beta)",
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Runs models locally on the phone. Requires app/src/main/assets/ml/model.tflite.",
-                            color = WayyColors.TextSecondary,
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
+                        Column(modifier = Modifier.padding(12.dp)) {
                             Text(
-                                text = "Enable scanning",
+                                text = "Map Tiles",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            val effectiveTilejson = mapSettings.tilejsonUrl.ifBlank {
+                                BuildConfig.PMTILES_TILEJSON_URL
+                            }
+                            val effectiveStyleUrl = mapSettings.mapStyleUrl.ifBlank {
+                                BuildConfig.MAP_STYLE_URL
+                            }
+                            val sourceLabel = when {
+                                effectiveTilejson.isNotBlank() -> "Protomaps (TileJSON)"
+                                effectiveStyleUrl.isNotBlank() -> "Custom Style URL"
+                                else -> "Bundled Style"
+                            }
+                            Text(
+                                text = "Current source: $sourceLabel",
                                 color = WayyColors.TextSecondary,
                                 fontSize = 12.sp
                             )
-                            Switch(
-                                checked = uiState.isScanning,
-                                onCheckedChange = { enabled ->
-                                    viewModel.setScanningEnabled(enabled)
-                                    coroutineScope.launch {
-                                        snackbarHostState.showSnackbar(
-                                            if (enabled) "ML scanning enabled" else "ML scanning disabled"
-                                        )
+                            if (effectiveTilejson.isNotBlank()) {
+                                Text(
+                                    text = "TileJSON: $effectiveTilejson",
+                                    color = WayyColors.TextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            } else if (effectiveStyleUrl.isNotBlank()) {
+                                Text(
+                                    text = "Style URL: $effectiveStyleUrl",
+                                    color = WayyColors.TextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = tilejsonInput,
+                                onValueChange = { tilejsonInput = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("TileJSON URL (Protomaps)") },
+                                singleLine = true
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = styleUrlInput,
+                                onValueChange = { styleUrlInput = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Style URL (MapLibre)") },
+                                singleLine = true
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Button(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            mapSettingsRepository.setTilejsonUrl(tilejsonInput)
+                                            mapSettingsRepository.setMapStyleUrl(styleUrlInput)
+                                            snackbarHostState.showSnackbar("Tile settings saved")
+                                        }
                                     }
+                                ) {
+                                    Text("Save")
                                 }
+                                Button(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            mapSettingsRepository.clearTilejsonUrl()
+                                            mapSettingsRepository.clearMapStyleUrl()
+                                            snackbarHostState.showSnackbar("Tile overrides cleared")
+                                        }
+                                    }
+                                ) {
+                                    Text("Clear")
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Offline caching uses the current tile source.",
+                                color = WayyColors.TextSecondary,
+                                fontSize = 11.sp
                             )
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = "Export Capture + Logs",
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(
-                            onClick = {
-                                coroutineScope.launch {
-                                    val exportFile = exportManager.createExportBundle()
-                                    if (exportFile == null) {
-                                        snackbarHostState.showSnackbar("Nothing to export yet")
-                                        return@launch
-                                    }
-                                    val uri = FileProvider.getUriForFile(
-                                        context,
-                                        "${context.packageName}.fileprovider",
-                                        exportFile
-                                    )
-                                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                        type = "application/zip"
-                                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    context.startActivity(
-                                        android.content.Intent.createChooser(shareIntent, "Share Wayy export")
+                    GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Offline Maps",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                            val summary = offlineSummary
+                            val summaryText = if (summary == null) {
+                                "Checking offline data..."
+                            } else {
+                                val regions = if (summary.regionCount == 0) {
+                                    "No areas saved"
+                                } else {
+                                    "${summary.regionCount} area${if (summary.regionCount == 1) "" else "s"} saved"
+                                }
+                                val status = if (summary.isDownloading) "Downloading" else "Idle"
+                                "$regions • ${formatBytes(summary.dbSizeBytes)} • $status"
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = summaryText,
+                                color = WayyColors.TextSecondary,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf(5.0, 12.0, 20.0).forEach { radius ->
+                                    FilterChip(
+                                        selected = offlineRadius == radius,
+                                        onClick = { offlineRadius = radius },
+                                        label = { Text("${radius.toInt()} km") }
                                     )
                                 }
                             }
-                        ) {
-                            Text("Export Bundle")
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    val location = currentLocation
+                                    if (location == null) {
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("Location required for offline download")
+                                        }
+                                    } else {
+                                        offlineMapManager.ensureRegion(
+                                            center = org.maplibre.android.geometry.LatLng(
+                                                location.latitude(),
+                                                location.longitude()
+                                            ),
+                                            radiusKm = offlineRadius,
+                                            minZoom = 12.0,
+                                            maxZoom = 19.0,
+                                            tilejsonUrlOverride = mapSettings.tilejsonUrl,
+                                            mapStyleUrlOverride = mapSettings.mapStyleUrl
+                                        )
+                                        offlineMapManager.loadSummary { summary ->
+                                            offlineSummary = summary
+                                        }
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("Offline download started")
+                                        }
+                                    }
+                                },
+                                enabled = currentLocation != null
+                            ) {
+                                Text("Download Offline Area")
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "On-device ML (beta)",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Runs models locally on the phone. Requires app/src/main/assets/ml/model.tflite.",
+                                color = WayyColors.TextSecondary,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Model",
+                                color = WayyColors.TextSecondary,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            val defaultSelected = mlSettings.modelPath == DEFAULT_MODEL_PATH
+                            val exeedSelected = mlSettings.modelPath == exeedModelPath
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(
+                                    selected = defaultSelected,
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            mlSettingsRepository.setModelPath(DEFAULT_MODEL_PATH)
+                                            if (uiState.isScanning) {
+                                                viewModel.setScanningEnabled(false)
+                                                viewModel.setScanningEnabled(true, DEFAULT_MODEL_PATH)
+                                            }
+                                        }
+                                    },
+                                    label = { Text("Default") }
+                                )
+                                FilterChip(
+                                    selected = exeedSelected,
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            mlSettingsRepository.setModelPath(exeedModelPath)
+                                            if (uiState.isScanning) {
+                                                viewModel.setScanningEnabled(false)
+                                                viewModel.setScanningEnabled(true, exeedModelPath)
+                                            }
+                                        }
+                                    },
+                                    label = { Text("Exeed") }
+                                )
+                            }
+                            val exeedExists = File(context.filesDir, "models/exeed_model.tflite").exists()
+                            Text(
+                                text = if (exeedExists) {
+                                    "Exeed model found on device"
+                                } else {
+                                    "Exeed model missing: push to ${context.filesDir}/models/exeed_model.tflite"
+                                },
+                                color = WayyColors.TextSecondary,
+                                fontSize = 11.sp
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Enable scanning",
+                                    color = WayyColors.TextSecondary,
+                                    fontSize = 12.sp
+                                )
+                            Switch(
+                                checked = uiState.isScanning,
+                                onCheckedChange = { enabled ->
+                                        viewModel.setScanningEnabled(enabled, mlSettings.modelPath)
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar(
+                                                if (enabled) "ML scanning enabled" else "ML scanning disabled"
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Export Capture + Logs",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        val exportFile = exportManager.createExportBundle()
+                                        if (exportFile == null) {
+                                            snackbarHostState.showSnackbar("Nothing to export yet")
+                                            return@launch
+                                        }
+                                        val uri = FileProvider.getUriForFile(
+                                            context,
+                                            "${context.packageName}.fileprovider",
+                                            exportFile
+                                        )
+                                        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                            type = "application/zip"
+                                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        context.startActivity(
+                                            android.content.Intent.createChooser(shareIntent, "Share Wayy export")
+                                        )
+                                    }
+                                }
+                            ) {
+                                Text("Export Bundle")
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+            }
+
+            if (activeTab == RouteOverviewTab.CAPTURES) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (captureEntries.isEmpty()) {
+                        item {
+                            Text(
+                                text = "No recordings yet",
+                                color = WayyColors.TextSecondary,
+                                fontSize = 13.sp
+                            )
+                        }
+                    } else {
+                        items(captureEntries) { entry ->
+                            CaptureCard(entry)
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(24.dp))
             }
 
             if (activeTab == RouteOverviewTab.SEARCH) {
@@ -558,40 +772,28 @@ fun RouteOverviewScreen(
                                     if (value == DismissValue.DismissedToEnd ||
                                         value == DismissValue.DismissedToStart
                                     ) {
-                                        viewModel.removeLocalPoi(poi.id)
-                                        true
-                                    } else {
+                                        if (pendingDeletePoi == null) {
+                                            pendingDeletePoi = poi
+                                        }
                                         false
+                                    } else {
+                                        true
                                     }
                                 }
                             )
                             SwipeToDismiss(
+                                modifier = Modifier.fillMaxWidth(0.9f),
                                 state = dismissState,
                                 directions = setOf(
                                     DismissDirection.EndToStart,
                                     DismissDirection.StartToEnd
                                 ),
                                 background = {
-                                    Row(
+                                    Box(
                                         modifier = Modifier
-                                            .fillMaxWidth(0.9f)
+                                            .fillMaxWidth()
                                             .height(80.dp)
-                                            .background(WayyColors.Error.copy(alpha = 0.2f))
-                                            .padding(horizontal = 16.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Delete",
-                                            tint = WayyColors.Error
-                                        )
-                                        Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Delete",
-                                            tint = WayyColors.Error
-                                        )
-                                    }
+                                    )
                                 },
                                 dismissContent = {
                                     RecentRouteCard(
@@ -600,7 +802,8 @@ fun RouteOverviewScreen(
                                         distance = distanceText,
                                         onClick = { onPoiSelected(poi) },
                                         leadingIcon = poiCategoryIcon(poi.category),
-                                        accentColor = poiCategoryColor(poi.category)
+                                        accentColor = poiCategoryColor(poi.category),
+                                        containerColor = WayyColors.BgSecondary
                                     )
                                 }
                             )
@@ -608,6 +811,37 @@ fun RouteOverviewScreen(
                     }
                 }
             }
+        }
+
+        pendingDeletePoi?.let { poi ->
+            AlertDialog(
+                onDismissRequest = { pendingDeletePoi = null },
+                title = { Text(text = "Delete POI?", color = Color.White) },
+                text = {
+                    Text(
+                        text = "Remove ${poi.name} from your POIs?",
+                        color = WayyColors.TextSecondary
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.removeLocalPoi(poi.id)
+                            pendingDeletePoi = null
+                        }
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    Button(onClick = { pendingDeletePoi = null }) {
+                        Text("Cancel")
+                    }
+                },
+                containerColor = WayyColors.BgSecondary,
+                titleContentColor = Color.White,
+                textContentColor = WayyColors.TextSecondary
+            )
         }
 
         SnackbarHost(
@@ -629,16 +863,17 @@ fun RecentRouteCard(
     distance: String,
     onClick: () -> Unit,
     leadingIcon: ImageVector? = null,
-    accentColor: Color = WayyColors.PrimaryLime
+    accentColor: Color = WayyColors.PrimaryLime,
+    containerColor: Color = WayyColors.GlassLight
 ) {
     Card(
         onClick = onClick,
         modifier = Modifier
-            .fillMaxWidth(0.9f)
+            .fillMaxWidth()
             .height(80.dp),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = WayyColors.GlassLight
+            containerColor = containerColor
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
@@ -695,10 +930,80 @@ private data class PoiDistance(
     val distanceMeters: Double?
 )
 
+private data class CaptureEntry(
+    val name: String,
+    val timestampLabel: String,
+    val sizeBytes: Long
+)
+
+@Composable
+private fun CaptureCard(entry: CaptureEntry) {
+    GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = entry.name,
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = entry.timestampLabel,
+                    color = WayyColors.TextSecondary,
+                    fontSize = 12.sp
+                )
+            }
+            Text(
+                text = formatBytes(entry.sizeBytes),
+                color = WayyColors.PrimaryCyan,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+private fun loadCaptureEntries(storageManager: CaptureStorageManager): List<CaptureEntry> {
+    val dir = storageManager.getCaptureDir()
+    if (!dir.exists()) return emptyList()
+    val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+    return dir.listFiles()
+        ?.filter { it.isFile && it.name.startsWith("nav_capture_") && it.extension == "mp4" }
+        ?.sortedByDescending { it.lastModified() }
+        ?.map { file ->
+            val stamp = captureStampFromName(file.name)
+            val timestamp = stamp?.let { parseCaptureStamp(it) }
+            CaptureEntry(
+                name = "Recording",
+                timestampLabel = timestamp?.let { formatter.format(it) } ?: file.name,
+                sizeBytes = file.length()
+            )
+        }
+        ?: emptyList()
+}
+
+private fun captureStampFromName(name: String): String? {
+    val match = Regex("nav_capture_(\\d{8}_\\d{6})\\.mp4").find(name)
+    return match?.groupValues?.get(1)
+}
+
+private fun parseCaptureStamp(stamp: String): Date? {
+    return runCatching {
+        SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).parse(stamp)
+    }.getOrNull()
+}
+
 private enum class RouteOverviewTab {
     SEARCH,
     POIS,
-    SETTINGS
+    SETTINGS,
+    CAPTURES
 }
 
 private data class PoiCategoryOption(
