@@ -174,7 +174,7 @@ class OfflineMapManager(
             return ResolvedStyle(styleUrl, styleUrl.contains("pmtiles://asset://") || styleUrl.contains("asset://protomaps_style.json"))
         }
 
-        return ResolvedStyle(buildStyleFromTemplate(DEFAULT_PMTILES_SOURCE_URL), true)
+        return ResolvedStyle(DEFAULT_STYLE_URL, true)
     }
 
     private fun buildStyleFromTemplate(sourceUrl: String): String {
@@ -182,14 +182,14 @@ class OfflineMapManager(
         val rawStyle = context.assets.open(PROTOMAPS_STYLE_ASSET)
             .bufferedReader()
             .use { it.readText() }
-        cacheStyleFile.writeText(rawStyle.replace(TILEJSON_PLACEHOLDER, sourceUrl))
+        cacheStyleFile.writeText(rawStyle.replace(DEFAULT_PMTILES_SOURCE_URL, sourceUrl))
         return "file://${cacheStyleFile.absolutePath}"
     }
 
     companion object {
         private const val TAG = "WayyOffline"
         private const val PROTOMAPS_STYLE_ASSET = "protomaps_style.json"
-        private const val TILEJSON_PLACEHOLDER = "__TILEJSON_URL__"
+        private const val DEFAULT_STYLE_URL = "asset://protomaps_style.json"
         private const val DEFAULT_PMTILES_SOURCE_URL = "pmtiles://asset://doha.pmtiles"
     }
 }

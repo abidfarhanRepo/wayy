@@ -22,8 +22,7 @@ class MapStyleManager(private val context: Context) {
     companion object {
         val STYLE_URI: String = BuildConfig.MAP_STYLE_URL.ifBlank { DEFAULT_STYLE_URL }
         private const val PROTOMAPS_STYLE_ASSET = "protomaps_style.json"
-        private const val TILEJSON_PLACEHOLDER = "__TILEJSON_URL__"
-        private const val DEFAULT_STYLE_URL = "https://demotiles.maplibre.org/style.json"
+        private const val DEFAULT_STYLE_URL = "asset://protomaps_style.json"
         private const val DEFAULT_PMTILES_SOURCE_URL = "pmtiles://asset://doha.pmtiles"
 
         // Style constants
@@ -75,7 +74,7 @@ class MapStyleManager(private val context: Context) {
             }
             else -> {
                 android.util.Log.d("MapStyleManager", "Using embedded PMTiles style")
-                loadStyleWithTilejson(DEFAULT_PMTILES_SOURCE_URL)
+                DEFAULT_STYLE_URL
             }
         }
 
@@ -90,7 +89,7 @@ class MapStyleManager(private val context: Context) {
         val rawStyle = context.assets.open(PROTOMAPS_STYLE_ASSET)
             .bufferedReader()
             .use { it.readText() }
-        val styleJson = rawStyle.replace(TILEJSON_PLACEHOLDER, tilejsonUrl)
+        val styleJson = rawStyle.replace(DEFAULT_PMTILES_SOURCE_URL, tilejsonUrl)
         val cacheStyleFile = File(context.cacheDir, "protomaps_style_remote.json")
         cacheStyleFile.parentFile?.mkdirs()
         cacheStyleFile.writeText(styleJson)
