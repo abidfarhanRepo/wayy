@@ -20,10 +20,11 @@ import java.io.File
 class MapStyleManager(private val context: Context) {
 
     companion object {
-        val STYLE_URI: String = BuildConfig.MAP_STYLE_URL.ifBlank { "asset://protomaps_style.json" }
+        val STYLE_URI: String = BuildConfig.MAP_STYLE_URL.ifBlank { DEFAULT_STYLE_URL }
         private const val PROTOMAPS_STYLE_ASSET = "protomaps_style.json"
         private const val TILEJSON_PLACEHOLDER = "__TILEJSON_URL__"
-        private const val EMBEDDED_PMTILES_STYLE = "asset://protomaps_style.json"
+        private const val DEFAULT_STYLE_URL = "https://demotiles.maplibre.org/style.json"
+        private const val DEFAULT_PMTILES_SOURCE_URL = "pmtiles://asset://doha.pmtiles"
 
         // Style constants
         const val ROUTE_SOURCE_ID = "route-source"
@@ -74,7 +75,7 @@ class MapStyleManager(private val context: Context) {
             }
             else -> {
                 android.util.Log.d("MapStyleManager", "Using embedded PMTiles style")
-                EMBEDDED_PMTILES_STYLE
+                loadStyleWithTilejson(DEFAULT_PMTILES_SOURCE_URL)
             }
         }
 
@@ -89,10 +90,11 @@ class MapStyleManager(private val context: Context) {
         val rawStyle = context.assets.open(PROTOMAPS_STYLE_ASSET)
             .bufferedReader()
             .use { it.readText() }
+        val styleJson = rawStyle.replace(TILEJSON_PLACEHOLDER, tilejsonUrl)
         val cacheStyleFile = File(context.cacheDir, "protomaps_style_remote.json")
         cacheStyleFile.parentFile?.mkdirs()
-        cacheStyleFile.writeText(rawStyle.replace(TILEJSON_PLACEHOLDER, tilejsonUrl))
-        return cacheStyleFile.toURI().toString()
+        cacheStyleFile.writeText(styleJson)
+        return "file://${cacheStyleFile.absolutePath}"
     }
 
     private fun applyEnglishLabels(style: Style) {
@@ -113,7 +115,7 @@ class MapStyleManager(private val context: Context) {
                     android.util.Log.w("MapStyleManager", "Could not set labels for layer ${layer.id}: ${e.message}")
                 }
             }
-        android.util.Log.d("MapStyleManager", "Applied English labels to ${style.layers?.count { it is SymbolLayer } ?: 0} symbol layers")
+        android.util.Log.d("MapStyleManager", "Applied English labels to ${style.layers.count { it is SymbolLayer }} symbol layers")
     }
 
     /**
@@ -207,6 +209,7 @@ class MapStyleManager(private val context: Context) {
      * Update map transition settings for smooth animations
      * Note: StyleTransition may not be available in all MapLibre versions
      */
+    @Suppress("UNUSED_PARAMETER")
     fun setSmoothTransitions(map: MapLibreMap) {
         // Disabled for compatibility - transitions are handled by map SDK
     }

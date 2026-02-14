@@ -71,6 +71,7 @@ import com.wayy.capture.CaptureStorageManager
 import com.wayy.data.settings.MlSettings
 import com.wayy.data.settings.MlSettingsRepository
 import com.wayy.data.settings.DEFAULT_MODEL_PATH
+import com.wayy.data.settings.DEFAULT_LANE_MODEL_PATH
 import com.wayy.data.settings.MapSettings
 import com.wayy.data.settings.MapSettingsRepository
 import com.wayy.debug.DiagnosticLogger
@@ -130,6 +131,7 @@ fun RouteOverviewScreen(
     var pendingDeletePoi by remember { mutableStateOf<LocalPoiItem?>(null) }
     var captureEntries by remember { mutableStateOf<List<CaptureEntry>>(emptyList()) }
     val exeedModelPath = "file://${context.filesDir}/models/exeed_model.tflite"
+    val customLaneModelPath = "file://${context.filesDir}/models/lane_model.tflite"
     val showSearchResults = searchQuery.trim().length >= 3
     val filteredPois = localPois.filter { poi ->
         selectedCategory == "all" || poi.category.lowercase() == selectedCategory
@@ -150,14 +152,18 @@ fun RouteOverviewScreen(
     BackHandler(onBack = onBack)
 
     LaunchedEffect(searchQuery) {
-        val query = searchQuery.trim()
-        if (query.length < 3) {
+        try {
+            val query = searchQuery.trim()
+            if (query.length < 3) {
+                viewModel.clearSearchResults()
+                return@LaunchedEffect
+            }
+            delay(350)
+            if (query == searchQuery.trim()) {
+                viewModel.searchPlaces(query, currentLocation)
+            }
+        } catch (e: Exception) {
             viewModel.clearSearchResults()
-            return@LaunchedEffect
-        }
-        delay(350)
-        if (query == searchQuery.trim()) {
-            viewModel.searchPlaces(query, currentLocation)
         }
     }
 
@@ -169,7 +175,11 @@ fun RouteOverviewScreen(
 
     LaunchedEffect(activeTab) {
         if (activeTab == RouteOverviewTab.CAPTURES) {
-            captureEntries = loadCaptureEntries(captureStorageManager)
+            captureEntries = try {
+                loadCaptureEntries(captureStorageManager)
+            } catch (e: Exception) {
+                emptyList()
+            }
         }
     }
 
@@ -515,6 +525,72 @@ fun RouteOverviewScreen(
                                     }
                                 )
                             }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Lane Detection Model",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Model for lane segmentation detection.",
+                                color = WayyColors.TextSecondary,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Lane Model",
+                                color = WayyColors.TextSecondary,
+                                fontSize = 12.sp
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            val laneDefaultSelected = mlSettings.laneModelPath == DEFAULT_LANE_MODEL_PATH
+                            val laneCustomSelected = mlSettings.laneModelPath == customLaneModelPath
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(
+                                    selected = laneDefaultSelected,
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            mlSettingsRepository.setLaneModelPath(DEFAULT_LANE_MODEL_PATH)
+                                            snackbarHostState.showSnackbar("Lane model set to default (asset)")
+                                        }
+                                    },
+                                    label = { Text("Default (Asset)") }
+                                )
+                                FilterChip(
+                                    selected = laneCustomSelected,
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            mlSettingsRepository.setLaneModelPath(customLaneModelPath)
+                                            snackbarHostState.showSnackbar("Lane model set to custom (device storage)")
+                                        }
+                                    },
+                                    label = { Text("Custom (Device)") }
+                                )
+                            }
+                            val laneModelExists = File(context.filesDir, "models/lane_model.tflite").exists()
+                            Text(
+                                text = if (laneModelExists) {
+                                    "Custom lane model found on device"
+                                } else {
+                                    "Custom lane model missing: push to ${context.filesDir}/models/lane_model.tflite"
+                                },
+                                color = WayyColors.TextSecondary,
+                                fontSize = 11.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Current: ${if (laneDefaultSelected) "Asset" else if (laneCustomSelected) "Device Storage" else "Custom path"}",
+                                color = WayyColors.PrimaryLime,
+                                fontSize = 11.sp
+                            )
                         }
                     }
 

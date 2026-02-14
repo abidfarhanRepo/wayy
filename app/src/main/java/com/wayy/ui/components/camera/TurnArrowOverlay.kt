@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import com.wayy.navigation.NavigationUtils
 import com.wayy.ui.components.navigation.Direction
 import com.wayy.ui.theme.WayyColors
+import kotlin.math.absoluteValue
 
 @Composable
 fun TurnArrowOverlay(
@@ -48,14 +49,17 @@ fun TurnArrowOverlay(
         Direction.SLIGHT_RIGHT -> 45f
     }
 
-    val bearingDelta = if (turnBearing > 0f) {
-        NavigationUtils.bearingDifference(deviceBearing, turnBearing)
+    val safeDeviceBearing = deviceBearing.coerceIn(0f, 360f)
+    val safeTurnBearing = turnBearing.coerceIn(0f, 360f)
+    
+    val bearingDelta = if (safeTurnBearing > 0f) {
+        NavigationUtils.bearingDifference(safeDeviceBearing, safeTurnBearing)
     } else {
         baseRotation
     }
 
     val arrowRotation by animateFloatAsState(
-        targetValue = bearingDelta,
+        targetValue = bearingDelta.coerceIn(-180f, 180f),
         animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
         label = "ar_arrow_rotation"
     )
@@ -83,6 +87,9 @@ fun TurnArrowOverlay(
         Direction.SLIGHT_LEFT -> Icons.Default.TurnSharpLeft
         Direction.SLIGHT_RIGHT -> Icons.Default.TurnSharpRight
     }
+    
+    val safeDistance = distanceToTurnMeters.coerceAtLeast(0.0)
+    val distanceText = NavigationUtils.formatDistance(safeDistance)
 
     androidx.compose.foundation.layout.Box(
         modifier = modifier,
@@ -98,7 +105,7 @@ fun TurnArrowOverlay(
                 .scale(1.3f)
         )
         Text(
-            text = NavigationUtils.formatDistance(distanceToTurnMeters),
+            text = distanceText,
             color = Color.White,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,

@@ -543,9 +543,15 @@ class NavigationViewModel(
     }
 
     fun toggle3DView() {
+        val newIs3DView = !_uiState.value.is3DView
         _uiState.value = _uiState.value.copy(
-            is3DView = !_uiState.value.is3DView
+            is3DView = newIs3DView
         )
+        
+        // Auto-enable scanning when 3D view is activated
+        if (newIs3DView && !_uiState.value.isScanning) {
+            setScanningEnabled(true)
+        }
     }
 
     fun toggleCameraFollow() {

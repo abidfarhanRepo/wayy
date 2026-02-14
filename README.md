@@ -10,6 +10,13 @@ A modern Android navigation app with glassmorphism UI, real-time speedometer, an
 - **Location Services** - GPS tracking with Fused Location Provider
 - **Cyberpunk Aesthetic** - Dark theme with glowing accents
 
+## Recent Updates (2026-02-14)
+
+- Added an OpenGL-based AR overlay renderer with dynamic lane visuals and richer navigation HUD elements.
+- Introduced a lane segmentation pipeline with a dedicated lane model asset and configurable model paths.
+- Improved navigation capture with storage-aware file management, JSONL metadata logging, and error/state reporting.
+- Refined map styling and offline map handling for navigation views.
+
 ## Tech Stack
 
 - **Kotlin** - Primary language
@@ -153,7 +160,7 @@ Current status: ML is not implemented yet (no training containers, no data pipel
 **Phase 1 (Now): On-device inference only**
 - Use pre-trained TF Lite models (lane detection, traffic signs, object detection).
 - Models run locally on the phone (optional toggle).
-- Drop a model file at `app/src/main/assets/ml/model.tflite` to enable scanning (we now support YOLOv8n Float16 there).
+- Drop model files at `app/src/main/assets/ml/model.tflite` (objects) and `app/src/main/assets/ml/lane_model.tflite` (lanes) to enable scanning.
 - Scanning uses live camera frames and currently runs when the camera preview is active (AR/PIP mode).
 
 **Phase 2: Opt-in data collection**
@@ -166,10 +173,11 @@ Current status: ML is not implemented yet (no training containers, no data pipel
 - Iterate for Qatar-specific accuracy.
 
 ### Option 1 (Fastest): Pre-converted model
-Place the model at `app/src/main/assets/ml/model.tflite` (already downloaded on your machine).
+Place the models at `app/src/main/assets/ml/model.tflite` and `app/src/main/assets/ml/lane_model.tflite`.
 
 ```
 app/src/main/assets/ml/model.tflite
+app/src/main/assets/ml/lane_model.tflite
 ```
 
 ## Training Pipeline (Drive Data → Improved Models)

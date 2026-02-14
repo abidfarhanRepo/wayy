@@ -46,8 +46,7 @@ fun CameraPreviewCard(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (hasCameraPermission) {
-                CameraPreviewSurface(
-                    modifier = Modifier.fillMaxSize(),
+                HiddenCameraForML(
                     onVideoCaptureReady = onVideoCaptureReady,
                     frameAnalyzer = frameAnalyzer
                 )

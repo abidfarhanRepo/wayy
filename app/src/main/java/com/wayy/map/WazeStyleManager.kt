@@ -113,6 +113,8 @@ class WazeStyleManager {
         map: MapLibreMap,
         sourceId: String
     ) {
+        android.util.Log.d("WayyWaze", "Adding location marker layers for source: $sourceId")
+
         // Pulsing outer ring (location accuracy indicator)
         val pulseLayer = CircleLayer(LOCATION_PULSE_LAYER, sourceId).apply {
             setProperties(
@@ -124,6 +126,7 @@ class WazeStyleManager {
             )
         }
         map.style?.addLayer(pulseLayer)
+        android.util.Log.d("WayyWaze", "Added pulse layer: $LOCATION_PULSE_LAYER")
 
         // Inner dot (actual location)
         val dotLayer = CircleLayer(LOCATION_DOT_LAYER, sourceId).apply {
@@ -136,6 +139,7 @@ class WazeStyleManager {
             )
         }
         map.style?.addLayer(dotLayer)
+        android.util.Log.d("WayyWaze", "Added dot layer: $LOCATION_DOT_LAYER")
     }
 
     /**

@@ -217,7 +217,24 @@ class MapLibreManager(private val context: Context) {
                 val feature = Feature.fromGeometry(point)
                 feature.addNumberProperty("bearing", bearing.toDouble())
                 source.setGeoJson(feature)
+                android.util.Log.d("WayyMap", "Updated location marker: lat=${location.latitude}, lon=${location.longitude}")
+            } else {
+                android.util.Log.w("WayyMap", "Location source not found, marker not updated")
             }
+        }
+    }
+
+    /**
+     * Center camera on user location (no bearing)
+     */
+    fun centerOnUserLocation(location: LatLng, zoom: Double = 15.0) {
+        mapLibreMap?.let { map ->
+            val position = CameraPosition.Builder()
+                .target(location)
+                .zoom(zoom)
+                .build()
+            map.easeCamera(CameraUpdateFactory.newCameraPosition(position), 300)
+            android.util.Log.d("WayyMap", "Centering camera on location: lat=${location.latitude}, lon=${location.longitude}, zoom=$zoom")
         }
     }
 
@@ -233,19 +250,6 @@ class MapLibreManager(private val context: Context) {
                 .tilt(tilt)
                 .build()
             map.animateCamera(CameraUpdateFactory.newCameraPosition(position), 500)
-        }
-    }
-
-    /**
-     * Center camera on user location (no bearing)
-     */
-    fun centerOnUserLocation(location: LatLng, zoom: Double = 15.0) {
-        mapLibreMap?.let { map ->
-            val position = CameraPosition.Builder()
-                .target(location)
-                .zoom(zoom)
-                .build()
-            map.easeCamera(CameraUpdateFactory.newCameraPosition(position), 300)
         }
     }
 

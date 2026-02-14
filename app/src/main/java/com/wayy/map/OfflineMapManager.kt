@@ -18,6 +18,10 @@ class OfflineMapManager(
     private val context: Context,
     private val diagnosticLogger: DiagnosticLogger
 ) {
+    private data class ResolvedStyle(
+        val url: String,
+        val isEmbedded: Boolean
+    )
 
     private val offlineManager: OfflineManager = OfflineManager.getInstance(context)
     private val offlineDbFile = File(context.filesDir, "mbgl-offline.db")
@@ -49,9 +53,9 @@ class OfflineMapManager(
     ) {
         if (isDownloading) return
 
-        val styleUrl = resolveStyleUrl(tilejsonUrlOverride, mapStyleUrlOverride)
+        val resolvedStyle = resolveStyleUrl(tilejsonUrlOverride, mapStyleUrlOverride)
 
-        if (styleUrl.contains("pmtiles://asset://") || styleUrl.contains("asset://protomaps_style.json")) {
+        if (resolvedStyle.isEmbedded) {
             diagnosticLogger.log(tag = TAG, message = "Using embedded PMTiles - offline download not needed")
             return
         }
@@ -82,7 +86,7 @@ class OfflineMapManager(
     ) {
         val bounds = buildBounds(center, radiusKm)
         val definition = OfflineTilePyramidRegionDefinition(
-            resolveStyleUrl(tilejsonUrlOverride, mapStyleUrlOverride),
+            resolveStyleUrl(tilejsonUrlOverride, mapStyleUrlOverride).url,
             bounds,
             minZoom,
             maxZoom,
@@ -156,29 +160,37 @@ class OfflineMapManager(
         return LatLngBounds.from(northeast.latitude, northeast.longitude, southwest.latitude, southwest.longitude)
     }
 
-    private fun resolveStyleUrl(tilejsonUrlOverride: String?, mapStyleUrlOverride: String?): String {
+    private fun resolveStyleUrl(tilejsonUrlOverride: String?, mapStyleUrlOverride: String?): ResolvedStyle {
         val tilejsonUrl = tilejsonUrlOverride?.trim().orEmpty()
             .ifBlank { BuildConfig.PMTILES_TILEJSON_URL }
 
         if (tilejsonUrl.isNotBlank()) {
-            cacheStyleFile.parentFile?.mkdirs()
-            val rawStyle = context.assets.open(PROTOMAPS_STYLE_ASSET)
-                .bufferedReader()
-                .use { it.readText() }
-            cacheStyleFile.writeText(rawStyle.replace(TILEJSON_PLACEHOLDER, tilejsonUrl))
-            return cacheStyleFile.toURI().toString()
+            return ResolvedStyle(buildStyleFromTemplate(tilejsonUrl), tilejsonUrl.startsWith("pmtiles://asset://"))
         }
 
         val styleUrl = mapStyleUrlOverride?.trim().orEmpty()
             .ifBlank { BuildConfig.MAP_STYLE_URL }
-        return styleUrl.ifBlank { EMBEDDED_PMTILES_STYLE }
+        if (styleUrl.isNotBlank()) {
+            return ResolvedStyle(styleUrl, styleUrl.contains("pmtiles://asset://") || styleUrl.contains("asset://protomaps_style.json"))
+        }
+
+        return ResolvedStyle(buildStyleFromTemplate(DEFAULT_PMTILES_SOURCE_URL), true)
+    }
+
+    private fun buildStyleFromTemplate(sourceUrl: String): String {
+        cacheStyleFile.parentFile?.mkdirs()
+        val rawStyle = context.assets.open(PROTOMAPS_STYLE_ASSET)
+            .bufferedReader()
+            .use { it.readText() }
+        cacheStyleFile.writeText(rawStyle.replace(TILEJSON_PLACEHOLDER, sourceUrl))
+        return "file://${cacheStyleFile.absolutePath}"
     }
 
     companion object {
         private const val TAG = "WayyOffline"
         private const val PROTOMAPS_STYLE_ASSET = "protomaps_style.json"
         private const val TILEJSON_PLACEHOLDER = "__TILEJSON_URL__"
-        private const val EMBEDDED_PMTILES_STYLE = "asset://protomaps_style.json"
+        private const val DEFAULT_PMTILES_SOURCE_URL = "pmtiles://asset://doha.pmtiles"
     }
 }
 data class OfflineSummary(

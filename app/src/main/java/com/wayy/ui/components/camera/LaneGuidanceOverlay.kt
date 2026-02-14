@@ -30,6 +30,7 @@ fun LaneGuidanceOverlay(
     modifier: Modifier = Modifier
 ) {
     if (lanes.isEmpty()) return
+    val safeLanes = lanes.take(10) // Prevent overflow
     Row(
         modifier = modifier
             .background(
@@ -40,10 +41,10 @@ fun LaneGuidanceOverlay(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        lanes.forEach { lane ->
+        safeLanes.forEach { lane ->
             val color by animateColorAsState(
                 targetValue = if (lane.isActive) WayyColors.PrimaryLime else Color.White.copy(alpha = 0.4f),
-                label = "lane_color"
+                label = "lane_color_${lane.id}"
             )
             Spacer(
                 modifier = Modifier

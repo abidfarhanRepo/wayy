@@ -81,3 +81,56 @@ fun CameraPreviewSurface(
         modifier = modifier
     )
 }
+
+@Composable
+fun HiddenCameraForML(
+    onError: (String) -> Unit = {},
+    onVideoCaptureReady: ((VideoCapture<Recorder>) -> Unit)? = null,
+    frameAnalyzer: ImageAnalysis.Analyzer? = null
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
+
+    LaunchedEffect(cameraProviderFuture) {
+        val executor = ContextCompat.getMainExecutor(context)
+        cameraProviderFuture.addListener(
+            {
+                val cameraProvider = cameraProviderFuture.get()
+                val recorder = Recorder.Builder()
+                    .setQualitySelector(QualitySelector.from(Quality.HD))
+                    .build()
+                val videoCapture = VideoCapture.withOutput(recorder)
+                val analysis = frameAnalyzer?.let {
+                    ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+                        .build()
+                        .also { imageAnalysis ->
+                            imageAnalysis.setAnalyzer(analysisExecutor, it)
+                        }
+                }
+                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+                try {
+                    cameraProvider.unbindAll()
+                    if (analysis != null) {
+                        cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, videoCapture, analysis)
+                    } else {
+                        cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, videoCapture)
+                    }
+                    onVideoCaptureReady?.invoke(videoCapture)
+                    Log.d("WayyCamera", "Hidden camera for ML initialized")
+                } catch (e: Exception) {
+                    Log.e("WayyCamera", "Hidden camera bind failed", e)
+                    onError("Camera failed to start")
+                }
+            },
+            executor
+        )
+    }
+
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { analysisExecutor.shutdown() }
+    }
+}
