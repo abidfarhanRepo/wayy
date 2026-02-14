@@ -39,6 +39,7 @@ class LocationManager(private val context: Context) {
     companion object {
         private const val LOCATION_UPDATE_INTERVAL = 1000L  // 1 second
         private const val FASTEST_UPDATE_INTERVAL = 500L    // 500ms
+        private const val SPEED_ACCURACY_METERS = 15f
     }
 
     /**
@@ -130,11 +131,13 @@ class LocationManager(private val context: Context) {
         Log.d("WayyLocation", "Starting location updates")
 
         val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+            Priority.PRIORITY_HIGH_ACCURACY,
             LOCATION_UPDATE_INTERVAL
         ).apply {
             setMinUpdateIntervalMillis(FASTEST_UPDATE_INTERVAL)
-            setMinUpdateDistanceMeters(1f)
+            setMinUpdateDistanceMeters(0f)
+            setGranularity(com.google.android.gms.location.Granularity.GRANULARITY_FINE)
+            setWaitForAccurateLocation(true)
         }.build()
 
         val locationCallback = object : LocationCallback() {
@@ -249,7 +252,10 @@ class LocationManager(private val context: Context) {
     private fun resolveSpeedMps(location: Location): Float {
         val reported = if (location.hasSpeed()) location.speed else 0f
         val computed = computeSpeedFromDelta(location)
-        val useComputed = computed > 0f && (reported <= 0.5f || kotlin.math.abs(reported - computed) > 3f)
+        val goodAccuracy = !location.hasAccuracy() || location.accuracy <= SPEED_ACCURACY_METERS
+        val useComputed = goodAccuracy &&
+                computed > 0f &&
+                (reported <= 0.5f || kotlin.math.abs(reported - computed) > 3f)
         return if (useComputed) computed else reported
     }
 
@@ -260,6 +266,13 @@ class LocationManager(private val context: Context) {
         var speedMps = 0f
 
         if (previous != null && previousTimestamp != null && currentTimestamp > previousTimestamp) {
+            val previousAccuracyOk = !previous.hasAccuracy() || previous.accuracy <= SPEED_ACCURACY_METERS
+            val currentAccuracyOk = !location.hasAccuracy() || location.accuracy <= SPEED_ACCURACY_METERS
+            if (!previousAccuracyOk || !currentAccuracyOk) {
+                lastLocation = location
+                lastLocationTimestampNanos = currentTimestamp
+                return 0f
+            }
             val deltaSeconds = (currentTimestamp - previousTimestamp) / 1_000_000_000.0
             if (deltaSeconds > 0) {
                 val distance = location.distanceTo(previous)

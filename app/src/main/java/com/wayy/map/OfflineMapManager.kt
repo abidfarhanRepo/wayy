@@ -48,6 +48,14 @@ class OfflineMapManager(
         mapStyleUrlOverride: String? = null
     ) {
         if (isDownloading) return
+
+        val styleUrl = resolveStyleUrl(tilejsonUrlOverride, mapStyleUrlOverride)
+
+        if (styleUrl.contains("pmtiles://asset://") || styleUrl.contains("asset://protomaps_style.json")) {
+            diagnosticLogger.log(tag = TAG, message = "Using embedded PMTiles - offline download not needed")
+            return
+        }
+
         offlineManager.listOfflineRegions(object : OfflineManager.ListOfflineRegionsCallback {
             override fun onList(offlineRegions: Array<OfflineRegion>?) {
                 if (!offlineRegions.isNullOrEmpty()) {
@@ -151,23 +159,26 @@ class OfflineMapManager(
     private fun resolveStyleUrl(tilejsonUrlOverride: String?, mapStyleUrlOverride: String?): String {
         val tilejsonUrl = tilejsonUrlOverride?.trim().orEmpty()
             .ifBlank { BuildConfig.PMTILES_TILEJSON_URL }
-        if (tilejsonUrl.isBlank()) {
-            val styleUrl = mapStyleUrlOverride?.trim().orEmpty()
-                .ifBlank { BuildConfig.MAP_STYLE_URL }
-            return styleUrl.ifBlank { MapStyleManager.STYLE_URI }
+
+        if (tilejsonUrl.isNotBlank()) {
+            cacheStyleFile.parentFile?.mkdirs()
+            val rawStyle = context.assets.open(PROTOMAPS_STYLE_ASSET)
+                .bufferedReader()
+                .use { it.readText() }
+            cacheStyleFile.writeText(rawStyle.replace(TILEJSON_PLACEHOLDER, tilejsonUrl))
+            return cacheStyleFile.toURI().toString()
         }
-        cacheStyleFile.parentFile?.mkdirs()
-        val rawStyle = context.assets.open(PROTOMAPS_STYLE_ASSET)
-            .bufferedReader()
-            .use { it.readText() }
-        cacheStyleFile.writeText(rawStyle.replace(TILEJSON_PLACEHOLDER, tilejsonUrl))
-        return cacheStyleFile.toURI().toString()
+
+        val styleUrl = mapStyleUrlOverride?.trim().orEmpty()
+            .ifBlank { BuildConfig.MAP_STYLE_URL }
+        return styleUrl.ifBlank { EMBEDDED_PMTILES_STYLE }
     }
 
     companion object {
         private const val TAG = "WayyOffline"
         private const val PROTOMAPS_STYLE_ASSET = "protomaps_style.json"
         private const val TILEJSON_PLACEHOLDER = "__TILEJSON_URL__"
+        private const val EMBEDDED_PMTILES_STYLE = "asset://protomaps_style.json"
     }
 }
 data class OfflineSummary(

@@ -98,59 +98,53 @@ adb pull /data/data/com.wayy/files/capture ./capture
 adb pull /data/data/com.wayy/files/diagnostics ./diagnostics
 ```
 
-## Offline Maps
+## Offline Maps (Embedded PMTiles)
 
-The app auto-downloads a local offline region (~12 km radius) around your first GPS fix using the current map style URL. By default it uses OSM vector tiles via the shortbread style (`https://vector.openstreetmap.org/styles/shortbread/shadow.json`). For production or heavy use, switch to a self-hosted tile server to avoid public tile limits. Offline tiles are stored in `mbgl-offline.db` inside app storage.
+**Default: Doha, Qatar PMTiles are embedded in the APK.** The app ships with `doha.pmtiles` (13MB) covering central Doha (bbox: 51.35°E-51.65°E, 25.15°N-25.45°N). No server or internet connection is required for map tiles within this area.
 
-## Protomaps (Self-Hosted Qatar)
+- Maps work **fully offline** out of the box
+- Uses MapLibre Native 11.11.0+ with native `pmtiles://asset://` protocol support
+- Dark theme Protomaps style with English labels
 
-Wayy supports Protomaps PMTiles served via `pmtiles serve` (ZXY + TileJSON). For Qatar, extract a regional PMTiles file and run the server locally:
+### Expand Coverage
+
+To embed a larger area, replace `app/src/main/assets/doha.pmtiles`:
 
 ```bash
-# 1) Download a daily PMTiles build (example date) and extract Qatar
-docker pull protomaps/go-pmtiles
+# Extract a larger region from Protomaps daily build
 docker run --rm -v $(pwd):/data protomaps/go-pmtiles \
-  extract https://build.protomaps.com/20260210.pmtiles /data/qatar.pmtiles \
-  --bbox=50.7500,24.4700,52.6500,26.6500
+  extract https://build.protomaps.com/20260210.pmtiles /data/doha_expanded.pmtiles \
+  --bbox=51.0,24.8,52.0,26.0
 
-# 2) Serve PMTiles as ZXY + TileJSON
+# Replace the embedded file
+mv doha_expanded.pmtiles app/src/main/assets/doha.pmtiles
+```
+
+### Self-Hosted PMTiles (Alternative)
+
+For regions outside embedded coverage or larger areas, you can still use a self-hosted PMTiles server:
+
+```bash
+# 1) Extract region
+docker run --rm -v $(pwd):/data protomaps/go-pmtiles \
+  extract https://build.protomaps.com/20260210.pmtiles /data/region.pmtiles \
+  --bbox=<minLon>,<minLat>,<maxLon>,<maxLat>
+
+# 2) Serve with TileJSON
 docker run --rm -p 8080:8080 -v $(pwd):/data protomaps/go-pmtiles \
   serve /data --public-url http://<HOST_IP>:8080 --cors=*
+
+# 3) Build app pointing to server
+./gradlew assembleDebug -Pwayy.pmtilesTilejsonUrl=http://<HOST_IP>:8080/region.json
 ```
 
-This serves:
-```
-http://<HOST_IP>:8080/qatar.json
-http://<HOST_IP>:8080/qatar/{z}/{x}/{y}.mvt
-```
+### Custom Map Style
 
-Build the app to point at the TileJSON:
-
-```bash
-# Emulator: use 10.0.2.2
-./gradlew assembleDebug -Pwayy.pmtilesTilejsonUrl=http://10.0.2.2:8080/qatar.json
-
-# Physical device: use your machine's LAN IP
-./gradlew assembleDebug -Pwayy.pmtilesTilejsonUrl=http://<HOST_IP>:8080/qatar.json
-```
-
-When `wayy.pmtilesTilejsonUrl` is set, the app uses the bundled `protomaps_style.json` (dark flavor) with English labels.
-Offline downloads will cache tiles from the PMTiles server into `mbgl-offline.db` (the `.pmtiles` file itself stays on the server).
-The app currently allows cleartext HTTP so the local PMTiles server can be reached; for production, serve over HTTPS and tighten `network_security_config.xml`.
-
-To use a self-hosted TileServer GL Light or Martin instance, pass a style URL at build time:
+To use a custom style URL (TileServer GL, Martin, etc.):
 
 ```bash
 ./gradlew assembleDebug -Pwayy.mapStyleUrl=http://10.0.2.2:8080/styles/basic/style.json
 ```
-
-For TileServer GL Light with MBTiles:
-
-```bash
-docker run -v $(pwd)/tiles:/data -p 8080:8080 maptiler/tileserver-gl-light
-```
-
-This same style URL is used for offline downloads, so the device will cache tiles from your server. Map tile requests include a Wayy User-Agent header and cache responses for up to 7 days. Label language is forced to English when available (`name:en` → `name` fallback).
 
 ## ML & Data Collection Roadmap
 

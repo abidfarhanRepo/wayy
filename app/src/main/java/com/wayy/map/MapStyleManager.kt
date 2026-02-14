@@ -12,8 +12,7 @@ import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.layers.SymbolLayer
-// Note: Some MapLibre SDK versions may not have RasterSource or StyleTransition
-// We'll use simpler styling approach
+import java.io.File
 
 /**
  * Map style manager for dark theme navigation maps
@@ -21,9 +20,10 @@ import org.maplibre.android.style.layers.SymbolLayer
 class MapStyleManager(private val context: Context) {
 
     companion object {
-        val STYLE_URI: String = BuildConfig.MAP_STYLE_URL.ifBlank { "asset://wayy_style.json" }
+        val STYLE_URI: String = BuildConfig.MAP_STYLE_URL.ifBlank { "asset://protomaps_style.json" }
         private const val PROTOMAPS_STYLE_ASSET = "protomaps_style.json"
         private const val TILEJSON_PLACEHOLDER = "__TILEJSON_URL__"
+        private const val EMBEDDED_PMTILES_STYLE = "asset://protomaps_style.json"
 
         // Style constants
         const val ROUTE_SOURCE_ID = "route-source"
@@ -50,13 +50,7 @@ class MapStyleManager(private val context: Context) {
         private const val POI_DEFAULT_COLOR = "#3B82F6"
     }
 
-     /**
-      * Apply navigation map style from BuildConfig.MAP_STYLE_URL.
-      *
-      * @param map The MapLibreMap instance
-      * @param onStyleLoaded Callback when style is successfully loaded
-      */
-    fun applyDarkStyle(
+     fun applyDarkStyle(
         map: MapLibreMap,
         tilejsonUrlOverride: String? = null,
         mapStyleUrlOverride: String? = null,
@@ -64,26 +58,41 @@ class MapStyleManager(private val context: Context) {
     ) {
         val pmtilesTilejsonUrl = tilejsonUrlOverride?.trim().orEmpty()
             .ifBlank { BuildConfig.PMTILES_TILEJSON_URL }
-        if (pmtilesTilejsonUrl.isNotBlank()) {
-            val rawStyle = context.assets.open(PROTOMAPS_STYLE_ASSET)
-                .bufferedReader()
-                .use { it.readText() }
-            val styleJson = rawStyle.replace(TILEJSON_PLACEHOLDER, pmtilesTilejsonUrl)
-            map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
-                applyEnglishLabels(style)
-                android.util.Log.d("MapStyleManager", "Style loaded: $PROTOMAPS_STYLE_ASSET")
-                onStyleLoaded()
+
+        val styleUri = when {
+            pmtilesTilejsonUrl.isNotBlank() -> {
+                android.util.Log.d("MapStyleManager", "Using remote PMTiles TileJSON: $pmtilesTilejsonUrl")
+                loadStyleWithTilejson(pmtilesTilejsonUrl)
             }
-        } else {
-            val styleUri = mapStyleUrlOverride?.trim().orEmpty()
-                .ifBlank { BuildConfig.MAP_STYLE_URL }
-                .ifBlank { "asset://wayy_style.json" }
-            map.setStyle(Style.Builder().fromUri(styleUri)) { style ->
-                applyEnglishLabels(style)
-                android.util.Log.d("MapStyleManager", "Style loaded: $styleUri")
-                onStyleLoaded()
+            mapStyleUrlOverride.isNullOrBlank().not() -> {
+                android.util.Log.d("MapStyleManager", "Using override style: $mapStyleUrlOverride")
+                mapStyleUrlOverride!!.trim()
+            }
+            BuildConfig.MAP_STYLE_URL.isNotBlank() -> {
+                android.util.Log.d("MapStyleManager", "Using build config style: ${BuildConfig.MAP_STYLE_URL}")
+                BuildConfig.MAP_STYLE_URL
+            }
+            else -> {
+                android.util.Log.d("MapStyleManager", "Using embedded PMTiles style")
+                EMBEDDED_PMTILES_STYLE
             }
         }
+
+        map.setStyle(Style.Builder().fromUri(styleUri)) { style ->
+            applyEnglishLabels(style)
+            android.util.Log.d("MapStyleManager", "Style loaded successfully: $styleUri")
+            onStyleLoaded()
+        }
+    }
+
+    private fun loadStyleWithTilejson(tilejsonUrl: String): String {
+        val rawStyle = context.assets.open(PROTOMAPS_STYLE_ASSET)
+            .bufferedReader()
+            .use { it.readText() }
+        val cacheStyleFile = File(context.cacheDir, "protomaps_style_remote.json")
+        cacheStyleFile.parentFile?.mkdirs()
+        cacheStyleFile.writeText(rawStyle.replace(TILEJSON_PLACEHOLDER, tilejsonUrl))
+        return cacheStyleFile.toURI().toString()
     }
 
     private fun applyEnglishLabels(style: Style) {
@@ -91,15 +100,20 @@ class MapStyleManager(private val context: Context) {
             Expression.get("name:en"),
             Expression.get("name:latin"),
             Expression.get("name"),
-            Expression.get("name:ar")
+            Expression.get("pgf:name")
         )
         style.layers.orEmpty()
             .filterIsInstance<SymbolLayer>()
             .forEach { layer ->
-                layer.setProperties(
-                    PropertyFactory.textField(labelExpression)
-                )
+                try {
+                    layer.setProperties(
+                        PropertyFactory.textField(labelExpression)
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w("MapStyleManager", "Could not set labels for layer ${layer.id}: ${e.message}")
+                }
             }
+        android.util.Log.d("MapStyleManager", "Applied English labels to ${style.layers?.count { it is SymbolLayer } ?: 0} symbol layers")
     }
 
     /**

@@ -10,7 +10,7 @@ android {
     compileSdk = 34
 
     val mapStyleUrl = (project.findProperty("wayy.mapStyleUrl") as String?)
-        ?: "https://vector.openstreetmap.org/styles/shortbread/shadow.json"
+        ?: ""
     val pmtilesTilejsonUrl = (project.findProperty("wayy.pmtilesTilejsonUrl") as String?)
         ?: ""
 
@@ -95,8 +95,8 @@ dependencies {
     kapt("com.google.dagger:hilt-android-compiler:2.48")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
 
-    // MapLibre (Open Source Maps)
-    implementation("org.maplibre.gl:android-sdk:11.0.0")
+    // MapLibre (Open Source Maps) - 11.7.0+ required for native PMTiles support
+    implementation("org.maplibre.gl:android-sdk:11.11.0")
     implementation("org.maplibre.gl:android-plugin-annotation-v9:2.0.2")
 
     // Accompanist (System UI Controller)
@@ -118,6 +118,8 @@ dependencies {
     // On-device ML (TensorFlow Lite)
     implementation("org.tensorflow:tensorflow-lite:2.14.0")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0")
+    implementation("org.tensorflow:tensorflow-lite-gpu-api:2.14.0")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
