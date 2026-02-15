@@ -1,3 +1,4 @@
+```ignore
 # Built application files
 *.apk
 *.ap_
@@ -120,3 +121,17 @@ app/release/
 
 # Docker
 .dockerignore
+
+# Ignore large server data and runtime artifacts
+server/data/
+server/data/uploads/
+server/data/processed/
+server/wayy_backend.db
+server/app/__pycache__/
+
+# Ignore local media and processed exports
+*.mp4
+*.db
+*.geojson
+
+```
