@@ -83,7 +83,7 @@ fun TurnArrowOverlay(
         Direction.STRAIGHT -> Icons.Default.ArrowUpward
         Direction.LEFT -> Icons.Default.TurnSharpLeft
         Direction.RIGHT -> Icons.Default.TurnSharpRight
-        Direction.U_TURN -> Icons.Default.ArrowBack
+        Direction.U_TURN -> Icons.Filled.ArrowBack
         Direction.SLIGHT_LEFT -> Icons.Default.TurnSharpLeft
         Direction.SLIGHT_RIGHT -> Icons.Default.TurnSharpRight
     }

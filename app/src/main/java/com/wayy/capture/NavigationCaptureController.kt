@@ -97,8 +97,6 @@ class NavigationCaptureController(
         sessionInfo: CaptureSessionInfo
     ): Boolean {
         return try {
-            val storageStatus = storageManager.getStorageStatus()
-            
             val outputFileResult = storageManager.createCaptureFile("nav_capture", "mp4")
             if (outputFileResult.isFailure) {
                 val error = outputFileResult.exceptionOrNull()
@@ -128,7 +126,7 @@ class NavigationCaptureController(
             val newRecording = videoCapture.output
                 .prepareRecording(context, outputOptions)
                 .start(executor) { event ->
-                    handleVideoRecordEvent(event, outputFile, storageStatus)
+                    handleVideoRecordEvent(event, outputFile)
                 }
             
             recording.set(newRecording)
@@ -162,8 +160,7 @@ class NavigationCaptureController(
 
     private fun handleVideoRecordEvent(
         event: VideoRecordEvent,
-        outputFile: File,
-        initialStorageStatus: StorageStatus
+        outputFile: File
     ) {
         when (event) {
             is VideoRecordEvent.Start -> {
@@ -317,7 +314,6 @@ class NavigationCaptureController(
 
     private fun updateStats() {
         val videoFile = videoFile.get()
-        val metadataFile = metadataWriter.let { null }
         
         _captureStats.value = CaptureStats(
             durationMs = getCaptureDuration(),

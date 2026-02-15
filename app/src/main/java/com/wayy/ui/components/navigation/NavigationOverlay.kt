@@ -63,7 +63,7 @@ fun NavigationOverlay(
     streetName: String,
     modifier: Modifier = Modifier
 ) {
-    val iconRotation by animateFloatAsState(
+    val rotation by animateFloatAsState(
         targetValue = when (direction) {
             Direction.STRAIGHT -> 0f
             Direction.LEFT -> -90f
@@ -83,7 +83,7 @@ fun NavigationOverlay(
         Direction.STRAIGHT -> Icons.Default.ArrowUpward
         Direction.LEFT -> Icons.Default.TurnSharpLeft
         Direction.RIGHT -> Icons.Default.TurnSharpRight
-        Direction.U_TURN -> Icons.Default.ArrowBack
+        Direction.U_TURN -> Icons.Filled.ArrowBack
         Direction.SLIGHT_LEFT -> Icons.Default.TurnSharpLeft
         Direction.SLIGHT_RIGHT -> Icons.Default.TurnSharpRight
     }
@@ -190,7 +190,7 @@ fun DirectionArrow(
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            imageVector = Icons.Default.ArrowForward,
+            imageVector = Icons.Filled.ArrowForward,
             contentDescription = null,
             tint = WayyColors.PrimaryLime,
             modifier = Modifier
