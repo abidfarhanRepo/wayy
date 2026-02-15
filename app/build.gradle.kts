@@ -58,6 +58,10 @@ android {
         kotlinCompilerExtensionVersion = "1.5.4"
     }
 
+    androidResources {
+        noCompress += "pmtiles"
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -95,8 +99,8 @@ dependencies {
     kapt("com.google.dagger:hilt-android-compiler:2.48")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
 
-    // MapLibre (Open Source Maps) - 11.7.0+ required for native PMTiles support
-    implementation("org.maplibre.gl:android-sdk:11.11.0")
+    // MapLibre (Open Source Maps)
+    implementation("org.maplibre.gl:android-sdk:11.0.0")
     implementation("org.maplibre.gl:android-plugin-annotation-v9:2.0.2")
 
     // Accompanist (System UI Controller)
@@ -105,17 +109,14 @@ dependencies {
     // Location Services
     implementation("com.google.android.gms:play-services-location:21.1.0")
 
-    // CameraX for AR PiP
+    // CameraX for video capture
     implementation("androidx.camera:camera-core:1.3.1")
     implementation("androidx.camera:camera-camera2:1.3.1")
     implementation("androidx.camera:camera-lifecycle:1.3.1")
     implementation("androidx.camera:camera-view:1.3.1")
     implementation("androidx.camera:camera-video:1.3.1")
 
-    // AR (optional)
-    implementation("com.google.ar:core:1.41.0")
-
-    // On-device ML (TensorFlow Lite)
+    // TensorFlow Lite (for lane segmentation module)
     implementation("org.tensorflow:tensorflow-lite:2.14.0")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
     implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0")

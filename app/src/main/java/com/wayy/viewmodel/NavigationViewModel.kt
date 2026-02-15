@@ -20,8 +20,6 @@ import com.wayy.navigation.RerouteUtils
 import com.wayy.navigation.TurnInstruction
 import com.wayy.navigation.TurnInstructionProvider
 import com.wayy.ui.components.navigation.Direction
-import com.wayy.ar.ARCapability
-import com.wayy.ar.ARCapabilityStatus
 import com.wayy.debug.DiagnosticLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,25 +47,11 @@ enum class ActivationReason {
     APPROACHING_FORK
 }
 
-enum class ARMode {
-    DISABLED,
-    PIP_OVERLAY,
-    FULL_AR
-}
-
 data class NavigationUiState(
     val navigationState: NavigationState = NavigationState.Idle,
     val isNavigating: Boolean = false,
     val isScanning: Boolean = false,
-    val isARMode: Boolean = false,
-    val arMode: ARMode = ARMode.DISABLED,
-    val is3DView: Boolean = false,
-    val isCameraFollowing: Boolean = true,
-    val isAROverlayActive: Boolean = false,
     val deviceBearing: Float = 0f,
-    val arActivationReason: ActivationReason? = null,
-    val arCapability: ARCapability = ARCapability.CAMERA_FALLBACK,
-    val arFallbackReason: String? = null,
     val turnBearing: Float = 0f,
     val currentRoute: Route? = null,
     val currentLocation: Point? = null,
@@ -391,8 +375,7 @@ class NavigationViewModel(
             isApproachingTurn = (firstInstruction?.distanceMeters ?: 0.0) < 200,
             isLoading = false,
             error = null,
-            isOffRoute = false,
-            isCameraFollowing = true
+            isOffRoute = false
         )
 
         rerouteUtils.resetState()
@@ -435,8 +418,6 @@ class NavigationViewModel(
         _uiState.value = _uiState.value.copy(
             navigationState = NavigationState.Idle,
             isNavigating = false,
-            isAROverlayActive = false,
-            arActivationReason = null,
             currentRoute = null,
             currentStepIndex = 0,
             nextDirection = Direction.STRAIGHT,
@@ -486,79 +467,7 @@ class NavigationViewModel(
 
     fun getMlManager(): OnDeviceMlManager? = mlManager
 
-    fun toggleARMode() {
-        val nextMode = when (_uiState.value.arMode) {
-            ARMode.DISABLED -> ARMode.PIP_OVERLAY
-            ARMode.PIP_OVERLAY -> ARMode.FULL_AR
-            ARMode.FULL_AR -> ARMode.DISABLED
-        }
-        setArMode(nextMode, ActivationReason.USER_MANUAL)
-    }
 
-    fun setArMode(mode: ARMode, reason: ActivationReason? = null) {
-        val current = _uiState.value
-        val capability = current.arCapability
-        val canFullAr = capability == ARCapability.ARCORE || capability == ARCapability.HUAWEI_AR
-        val resolvedMode = if (mode == ARMode.FULL_AR && !canFullAr) ARMode.PIP_OVERLAY else mode
-        val fallbackReason = if (mode == ARMode.FULL_AR && !canFullAr) {
-            "AR runtime unavailable"
-        } else {
-            null
-        }
-        val arActive = resolvedMode != ARMode.DISABLED
-        _uiState.value = current.copy(
-            arMode = resolvedMode,
-            isARMode = arActive,
-            isAROverlayActive = arActive,
-            arActivationReason = if (reason != null && arActive) reason else current.arActivationReason,
-            arFallbackReason = fallbackReason
-        )
-        diagnosticLogger?.log(
-            tag = "WayyAR",
-            message = "AR mode changed",
-            data = mapOf("mode" to resolvedMode.name, "fallback" to fallbackReason)
-        )
-    }
-
-    fun updateArCapability(status: ARCapabilityStatus) {
-        val current = _uiState.value
-        val canFullAr = status.capability == ARCapability.ARCORE || status.capability == ARCapability.HUAWEI_AR
-        val resolvedMode = if (current.arMode == ARMode.FULL_AR && !canFullAr) {
-            ARMode.PIP_OVERLAY
-        } else {
-            current.arMode
-        }
-        _uiState.value = current.copy(
-            arCapability = status.capability,
-            arMode = resolvedMode,
-            isARMode = resolvedMode != ARMode.DISABLED,
-            isAROverlayActive = resolvedMode != ARMode.DISABLED,
-            arFallbackReason = if (resolvedMode != current.arMode) status.message else current.arFallbackReason
-        )
-        diagnosticLogger?.log(
-            tag = "WayyAR",
-            message = "AR capability updated",
-            data = mapOf("capability" to status.capability.name, "message" to status.message)
-        )
-    }
-
-    fun toggle3DView() {
-        val newIs3DView = !_uiState.value.is3DView
-        _uiState.value = _uiState.value.copy(
-            is3DView = newIs3DView
-        )
-        
-        // Auto-enable scanning when 3D view is activated
-        if (newIs3DView && !_uiState.value.isScanning) {
-            setScanningEnabled(true)
-        }
-    }
-
-    fun toggleCameraFollow() {
-        _uiState.value = _uiState.value.copy(
-            isCameraFollowing = !_uiState.value.isCameraFollowing
-        )
-    }
 
     fun setSpeedLimit(limitMph: Int) {
         _uiState.value = _uiState.value.copy(speedLimitMph = limitMph)
@@ -685,7 +594,6 @@ class NavigationViewModel(
         val currentStep = route.legs.firstOrNull()?.steps?.getOrNull(newStepIndex)
         val maneuverType = currentStep?.maneuver?.type?.lowercase().orEmpty()
         val distanceToTurn = currentInstruction?.distanceMeters ?: Double.MAX_VALUE
-        val activationReason = determineActivationReason(maneuverType, distanceToTurn)
 
         refreshTrafficStatsIfNeeded(currentInstruction?.streetName.orEmpty())
         refreshTrafficHistoryIfNeeded(currentInstruction?.streetName.orEmpty())
@@ -717,8 +625,6 @@ class NavigationViewModel(
             remainingDistance = NavigationUtils.formatDistance(remainingMeters),
             isApproachingTurn = (currentInstruction?.distanceMeters ?: 0.0) < 200,
             eta = NavigationUtils.formatDuration(etaSeconds),
-            arActivationReason = activationReason,
-            isAROverlayActive = _uiState.value.arMode != ARMode.DISABLED,
             turnBearing = currentStep?.maneuver?.bearingAfter?.toFloat() ?: 0f
         )
     }
@@ -828,22 +734,6 @@ class NavigationViewModel(
         }
     }
 
-    private fun determineActivationReason(
-        maneuverType: String,
-        distanceToTurn: Double
-    ): ActivationReason? {
-        if (distanceToTurn.isNaN() || distanceToTurn.isInfinite()) return null
-        return when {
-            maneuverType == "off ramp" && distanceToTurn < 500 -> ActivationReason.APPROACHING_EXIT
-            maneuverType == "fork" && distanceToTurn < 300 -> ActivationReason.APPROACHING_FORK
-            maneuverType == "roundabout" && distanceToTurn < 200 -> ActivationReason.APPROACHING_JUNCTION
-            maneuverType == "roundabout turn" && distanceToTurn < 200 -> ActivationReason.APPROACHING_JUNCTION
-            maneuverType == "merge" && distanceToTurn < 300 -> ActivationReason.APPROACHING_JUNCTION
-            distanceToTurn < 200 -> ActivationReason.APPROACHING_TURN
-            else -> null
-        }
-    }
-
     private fun logLocationIfNeeded(
         location: Point,
         speed: Float,
@@ -861,8 +751,7 @@ class NavigationViewModel(
                 "lng" to location.longitude(),
                 "speedMph" to speed,
                 "bearing" to bearing,
-                "accuracy" to accuracy,
-                "arMode" to _uiState.value.arMode.name
+                "accuracy" to accuracy
             )
         )
     }
@@ -872,8 +761,6 @@ class NavigationViewModel(
         _uiState.value = _uiState.value.copy(
             navigationState = NavigationState.Arrived,
             isNavigating = false,
-            isAROverlayActive = false,
-            arActivationReason = null,
             nextDirection = Direction.STRAIGHT,
             distanceToTurn = "",
             currentStreet = "Destination",

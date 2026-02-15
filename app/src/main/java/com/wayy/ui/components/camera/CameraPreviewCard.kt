@@ -28,7 +28,6 @@ fun CameraPreviewCard(
     deviceBearing: Float,
     turnBearing: Float,
     isApproaching: Boolean,
-    lanes: List<LaneConfig>,
     showGuidance: Boolean = true,
     detections: List<MlDetection> = emptyList(),
     showBoxes: Boolean = false,
@@ -82,27 +81,10 @@ fun CameraPreviewCard(
                         .padding(8.dp)
                 )
 
-                LaneGuidanceOverlay(
-                    lanes = lanes,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(8.dp)
-                )
+                // Lane guidance removed (AR cleanup)
             }
 
-            if (hasCameraPermission) {
-                ArVisionOverlay(
-                    detections = detections,
-                    showLanes = showLanes,
-                    showBoxes = showBoxes,
-                    leftLane = leftLane,
-                    rightLane = rightLane,
-                    deviceBearing = deviceBearing,
-                    turnBearing = turnBearing,
-                    isApproaching = isApproaching,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
+            // AR vision overlay removed (AR cleanup)
         }
     }
 }

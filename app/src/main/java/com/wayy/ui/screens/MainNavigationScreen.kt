@@ -40,6 +40,8 @@ import androidx.compose.material.icons.filled.LocalParking
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -81,8 +83,6 @@ import com.wayy.data.settings.MlSettingsRepository
 import com.wayy.data.sensor.LocationManager
 import com.wayy.data.sensor.DeviceOrientationManager
 import com.wayy.data.repository.LocalPoiItem
-import com.wayy.ar.ARCapability
-import com.wayy.ar.ARCapabilityChecker
 import com.wayy.capture.CaptureEvent
 import com.wayy.capture.CaptureSessionInfo
 import com.wayy.capture.CaptureState
@@ -99,13 +99,6 @@ import com.wayy.navigation.NavigationUtils
 import com.wayy.ui.components.camera.CameraPreviewCard
 import com.wayy.ui.components.camera.CameraPreviewSurface
 import com.wayy.ui.components.camera.HiddenCameraForML
-import com.wayy.ui.components.camera.ArVisionOverlay
-import com.wayy.ui.components.camera.ArNavigationOverlay
-import com.wayy.ui.components.camera.ArTurnIndicator
-import com.wayy.ui.components.camera.ArTurnInstruction
-import com.wayy.ui.components.camera.LaneConfig
-import com.wayy.ui.components.camera.LaneGuidanceOverlay
-import com.wayy.ui.components.camera.TurnArrowOverlay
 import com.wayy.ui.components.common.QuickActionsBar
 import com.wayy.ui.components.common.RoadQualityCard
 import com.wayy.ui.components.common.TopBar
@@ -114,7 +107,6 @@ import com.wayy.ui.components.gauges.SpeedometerSmall
 import com.wayy.ui.components.navigation.TurnBanner
 import com.wayy.ui.components.navigation.Direction
 import com.wayy.ui.theme.WayyColors
-import com.wayy.viewmodel.ARMode
 import com.wayy.viewmodel.NavigationState
 import com.wayy.viewmodel.NavigationViewModel
 import com.wayy.viewmodel.NavigationUiState
@@ -160,27 +152,24 @@ fun MainNavigationScreen(
     val wazeStyleManager = remember { WazeStyleManager() }
     val locationManager = remember { LocationManager(context) }
     val orientationManager = remember { DeviceOrientationManager(context) }
-    val arCapabilityChecker = remember { ARCapabilityChecker(context) }
     val captureController = remember { NavigationCaptureController(context) }
-    val diagnosticLogger = remember { DiagnosticLogger(context) }
-    val offlineMapManager = remember { OfflineMapManager(context, diagnosticLogger) }
+    val offlineMapManager = remember { OfflineMapManager(context) }
     val mapSettingsRepository = remember { MapSettingsRepository(context) }
     val mapSettings by mapSettingsRepository.settingsFlow.collectAsState(initial = MapSettings())
     val mlSettingsRepository = remember { MlSettingsRepository(context) }
     val mlSettings by mlSettingsRepository.settingsFlow.collectAsState(initial = MlSettings())
     val mlManager = remember { viewModel.getMlManager() }
-    val laneManager = remember { LaneSegmentationManager(context, diagnosticLogger) }
+    val laneManager = remember { LaneSegmentationManager(context) }
     val detectionTracker = remember { DetectionTracker() }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     var lastInferenceMs by remember { mutableStateOf<Double?>(null) }
     var lastDetections by remember { mutableStateOf(emptyList<MlDetection>()) }
     var laneResult by remember { mutableStateOf<LaneSegmentationResult?>(null) }
     val scanningState = rememberUpdatedState(uiState.isScanning)
-    val mlAnalyzer = remember(mlManager, diagnosticLogger, mainHandler) {
+    val mlAnalyzer = remember(mlManager, mainHandler) {
         mlManager?.let { manager ->
             MlFrameAnalyzer(
                 mlManager = manager,
-                diagnosticLogger = diagnosticLogger,
                 isEnabled = { scanningState.value },
                 onInference = { result ->
                     mainHandler.post {
@@ -200,7 +189,8 @@ fun MainNavigationScreen(
     var captureStartMs by remember { mutableStateOf<Long?>(null) }
     var captureElapsedMs by remember { mutableStateOf(0L) }
     var captureStorageStatus by remember { mutableStateOf<StorageStatus?>(null) }
-    var captureError by remember { mutableStateOf<CaptureError?>(null) }
+    var captureError by remember { mutableStateOf<String?>(null) }
+    var isNorthUp by remember { mutableStateOf(false) }  // Toggle for map rotation mode
     val localPois = viewModel.localPois?.collectAsState()?.value.orEmpty()
     val trafficReports = viewModel.trafficReports?.collectAsState()?.value.orEmpty()
     val trafficSegments = viewModel.trafficSegments.collectAsState().value
@@ -340,20 +330,9 @@ fun MainNavigationScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasCameraPermission = granted
-        diagnosticLogger.log(
-            tag = "WayyCamera",
-            message = if (granted) "Camera permission granted" else "Camera permission denied"
-        )
     }
 
     LaunchedEffect(Unit) {
-        val capability = arCapabilityChecker.check()
-        viewModel.updateArCapability(capability)
-        diagnosticLogger.log(
-            tag = "WayyAR",
-            message = "AR capability checked",
-            data = mapOf("capability" to capability.capability.name, "message" to capability.message)
-        )
         if (!hasLocationPermission) {
             permissionLauncher.launch(
                 arrayOf(
@@ -404,19 +383,7 @@ fun MainNavigationScreen(
         }
     }
 
-    LaunchedEffect(uiState.arMode, hasCameraPermission) {
-        if (uiState.arMode != ARMode.DISABLED && !hasCameraPermission) {
-            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        }
-    }
 
-    LaunchedEffect(uiState.arMode) {
-        activity?.requestedOrientation = if (uiState.arMode == ARMode.FULL_AR) {
-            ActivityInfo.SCREEN_ORIENTATION_SENSOR
-        } else {
-            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
-    }
 
     LaunchedEffect(uiState.isScanning, mlSettings.laneModelPath) {
         if (uiState.isScanning) {
@@ -431,8 +398,8 @@ fun MainNavigationScreen(
         viewModel.updateDeviceBearing(deviceBearing)
     }
 
-    DisposableEffect(uiState.isAROverlayActive, uiState.isNavigating) {
-        if (uiState.isAROverlayActive && uiState.isNavigating) {
+    DisposableEffect(uiState.isNavigating) {
+        if (uiState.isNavigating) {
             orientationManager.start()
         } else {
             orientationManager.stop()
@@ -458,30 +425,23 @@ fun MainNavigationScreen(
                                 update.bearing,
                                 update.accuracy
                             )
-                            captureController.logEvent(
-                                CaptureEvent(
-                                    type = "location",
-                                    timestamp = System.currentTimeMillis(),
-                                    payload = mapOf(
-                                        "lat" to update.location.latitude(),
-                                        "lng" to update.location.longitude(),
-                                        "speedMph" to update.speed,
-                                        "bearing" to update.bearing,
-                                        "accuracy" to update.accuracy,
-                                        "arMode" to uiState.arMode.name
-                                    )
-                                )
-                            )
                             mapManager.updateUserLocation(
                                 LatLng(update.location.latitude(), update.location.longitude()),
                                 update.bearing
                             )
 
                             val currentState = viewModel.uiState.value
-                            if (currentState.isCameraFollowing || currentState.isNavigating) {
+                            if (currentState.isNavigating && !isNorthUp) {
+                                // Only rotate map with bearing if not in north-up mode
                                 mapManager.animateToLocationWithBearing(
                                     LatLng(update.location.latitude(), update.location.longitude()),
                                     update.bearing
+                                )
+                            } else if (currentState.isNavigating && isNorthUp) {
+                                // North-up mode: no rotation
+                                mapManager.centerOnUserLocation(
+                                    LatLng(update.location.latitude(), update.location.longitude()),
+                                    zoom = 17.0
                                 )
                             }
                         } catch (e: Exception) {
@@ -507,8 +467,8 @@ fun MainNavigationScreen(
         }
     }
 
-    val shouldCapture = uiState.arMode != ARMode.DISABLED && uiState.isCaptureEnabled && hasCameraPermission
-    LaunchedEffect(shouldCapture, videoCapture, uiState.currentRoute, uiState.arMode) {
+    val shouldCapture = uiState.isCaptureEnabled && hasCameraPermission
+    LaunchedEffect(shouldCapture, videoCapture, uiState.currentRoute) {
         val capture = videoCapture
         if (shouldCapture && capture != null) {
             if (captureStartMs == null) {
@@ -519,13 +479,11 @@ fun MainNavigationScreen(
                 CaptureSessionInfo(
                     timestamp = System.currentTimeMillis(),
                     data = mapOf(
-                        "arMode" to uiState.arMode.name,
                         "routeDistance" to uiState.currentRoute?.distance,
                         "routeDuration" to uiState.currentRoute?.duration
                     )
                 )
             )
-            diagnosticLogger.log(tag = "WayyCapture", message = "Capture started")
         } else if (!shouldCapture) {
             captureController.stop(
                 CaptureSessionInfo(
@@ -533,14 +491,8 @@ fun MainNavigationScreen(
                     data = mapOf("reason" to "capture_disabled_or_stopped")
                 )
             )
-            diagnosticLogger.log(tag = "WayyCapture", message = "Capture stopped")
             captureStartMs = null
         } else if (capture == null) {
-            diagnosticLogger.log(
-                tag = "WayyCapture",
-                message = "Capture pending; video pipeline not ready",
-                level = "WARN"
-            )
         }
     }
 
@@ -554,7 +506,7 @@ fun MainNavigationScreen(
             while (true) {
                 captureElapsedMs = System.currentTimeMillis() - start
                 captureStorageStatus = captureController.getStorageStatus()
-                captureError = captureController.errorFlow.value
+                captureError = captureController.errorFlow.value?.message ?: ""
                 delay(1000)
             }
         } catch (e: Exception) {
@@ -567,108 +519,13 @@ fun MainNavigationScreen(
             .fillMaxSize()
             .background(WayyColors.BgPrimary)
     ) {
-        when {
-            uiState.is3DView -> {
-                if (hasCameraPermission) {
-                    HiddenCameraForML(
-                        onError = { error ->
-                            diagnosticLogger.log(tag = "Wayy3D", message = "Camera error", level = "WARN", data = mapOf("error" to error))
-                        },
-                        onVideoCaptureReady = { capture ->
-                            videoCapture = capture
-                            captureController.attachVideoCapture(capture)
-                        },
-                        frameAnalyzer = mlAnalyzer
-                    )
-                }
-                ArVisionOverlay(
-                    detections = lastDetections,
-                    showLanes = true,
-                    showBoxes = uiState.isScanning,
-                    leftLane = laneResult?.leftLane.orEmpty(),
-                    rightLane = laneResult?.rightLane.orEmpty(),
-                    deviceBearing = uiState.deviceBearing,
-                    turnBearing = uiState.turnBearing,
-                    isApproaching = uiState.isApproachingTurn,
-                    modifier = Modifier.fillMaxSize()
-                )
-                if (uiState.isNavigating) {
-                    ArTurnIndicator(
-                        direction = uiState.nextDirection,
-                        distanceText = uiState.distanceToTurn,
-                        distanceMeters = uiState.distanceToTurnMeters,
-                        streetName = uiState.currentStreet,
-                        isApproaching = uiState.isApproachingTurn,
-                        deviceBearing = uiState.deviceBearing,
-                        turnBearing = uiState.turnBearing,
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .statusBarsPadding()
-                            .padding(top = 48.dp)
-                    )
-                }
+        MapViewAutoLifecycle(
+            manager = mapManager,
+            modifier = Modifier.fillMaxSize(),
+            onMapReady = { map ->
+                configureMapStyle(map)
             }
-            uiState.arMode == ARMode.FULL_AR -> {
-                if (hasCameraPermission) {
-                    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
-                        HiddenCameraForML(
-                            onError = { error ->
-                                diagnosticLogger.log(tag = "WayyAR", message = "Camera error", level = "WARN", data = mapOf("error" to error))
-                            },
-                            onVideoCaptureReady = { capture ->
-                                videoCapture = capture
-                                captureController.attachVideoCapture(capture)
-                            },
-                            frameAnalyzer = mlAnalyzer
-                        )
-                        ArNavigationOverlay(
-                            detections = lastDetections,
-                            showLanes = true,
-                            showBoxes = uiState.isScanning,
-                            leftLane = laneResult?.leftLane.orEmpty(),
-                            rightLane = laneResult?.rightLane.orEmpty(),
-                            deviceBearing = uiState.deviceBearing,
-                            turnBearing = uiState.turnBearing,
-                            isApproaching = uiState.isApproachingTurn,
-                            isNavigating = uiState.isNavigating,
-                            nextDirection = uiState.nextDirection,
-                            nextNextDirection = uiState.nextNextDirection,
-                            distanceToTurnMeters = uiState.distanceToTurnMeters,
-                            distanceToTurnText = uiState.distanceToTurn,
-                            currentStreet = uiState.currentStreet,
-                            nextStreet = uiState.nextStreet,
-                            eta = uiState.eta,
-                            remainingDistance = uiState.remainingDistance,
-                            currentSpeed = uiState.currentSpeed,
-                            turnInstructions = buildArTurnInstructions(uiState),
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                } else {
-                    androidx.compose.foundation.layout.Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(WayyColors.BgPrimary),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Camera permission required",
-                            color = Color.White,
-                            fontSize = 16.sp
-                        )
-                    }
-                }
-            }
-            else -> {
-                MapViewAutoLifecycle(
-                    manager = mapManager,
-                    modifier = Modifier.fillMaxSize(),
-                    onMapReady = { map ->
-                        configureMapStyle(map)
-                    }
-                )
-            }
-        }
+        )
 
         LaunchedEffect(localPois) {
             try {
@@ -830,7 +687,7 @@ fun MainNavigationScreen(
             }
         }
 
-        if (!uiState.isNavigating && uiState.arMode == ARMode.DISABLED) {
+        if (!uiState.isNavigating) {
             TopBar(
                 onMenuClick = onMenuClick,
                 onSettingsClick = onSettingsClick,
@@ -841,82 +698,20 @@ fun MainNavigationScreen(
             )
         }
 
-        val laneConfigs = remember(uiState.nextDirection) {
-            buildLaneConfigs(uiState.nextDirection)
-        }
-
-        AnimatedVisibility(
-            visible = uiState.arMode == ARMode.PIP_OVERLAY,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .padding(end = 16.dp, bottom = 120.dp),
-            enter = slideInVertically(initialOffsetY = { it }) + scaleIn() + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + scaleOut() + fadeOut()
-        ) {
-            CameraPreviewCard(
-                direction = uiState.nextDirection,
-                distanceToTurnMeters = uiState.distanceToTurnMeters,
-                deviceBearing = uiState.deviceBearing,
-                turnBearing = uiState.turnBearing,
-                isApproaching = uiState.isApproachingTurn,
-                lanes = laneConfigs,
-                showGuidance = uiState.isNavigating,
-                detections = lastDetections,
-                showBoxes = uiState.isScanning,
-                showLanes = true,
-                leftLane = laneResult?.leftLane.orEmpty(),
-                rightLane = laneResult?.rightLane.orEmpty(),
-                hasCameraPermission = hasCameraPermission,
-                frameAnalyzer = mlAnalyzer,
-                onVideoCaptureReady = { capture ->
-                    videoCapture = capture
-                    captureController.attachVideoCapture(capture)
-                }
-            )
-        }
-
-        if (uiState.arMode == ARMode.FULL_AR && uiState.isNavigating) {
-            LaneGuidanceOverlay(
-                lanes = laneConfigs,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 24.dp)
-            )
-        }
-
-        if (uiState.arMode != ARMode.DISABLED && uiState.arMode != ARMode.FULL_AR) {
-            val trafficSeverity = trafficSpeedMps?.let { resolveTrafficSeverity(it) }
-            ArStatusHud(
-                isScanning = uiState.isScanning,
-                arMode = uiState.arMode,
-                trafficSeverity = trafficSeverity,
-                lastInferenceMs = lastInferenceMs,
-                objectCount = lastDetections.size,
+        // North-up map rotation toggle button
+        if (uiState.isNavigating) {
+            GlassIconButton(
+                onClick = { isNorthUp = !isNorthUp },
+                icon = if (isNorthUp) Icons.Default.Place else Icons.Default.Navigation,
+                contentDescription = if (isNorthUp) "North-up mode" else "Bearing mode",
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .statusBarsPadding()
                     .padding(top = 12.dp, end = 16.dp)
+                    .size(48.dp)
             )
         }
 
-        if (uiState.arMode != ARMode.DISABLED) {
-            val roadQualityText = if (uiState.roadQuality > 0f) {
-                "${(uiState.roadQuality * 100).toInt()}%"
-            } else {
-                "--"
-            }
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .statusBarsPadding()
-                    .padding(top = 56.dp, start = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                RoadQualityCard(quality = roadQualityText)
-            }
-        }
 
         if (captureStartMs != null) {
             CaptureTimerHud(
@@ -1170,8 +965,6 @@ fun MainNavigationScreen(
             )
         }
 
-        val isPipOverlay = uiState.arMode == ARMode.PIP_OVERLAY
-
         SpeedometerSmall(
             speed = uiState.currentSpeed * MPH_TO_KMH,
             unit = "km/h",
@@ -1183,43 +976,35 @@ fun MainNavigationScreen(
 
         QuickActionsBar(
             isNavigating = uiState.isNavigating,
-            isARActive = uiState.arMode != ARMode.DISABLED,
-            is3DActive = uiState.is3DView,
+            isRecording = captureStartMs != null,
             onMenuClick = onMenuClick,
             onNavigateToggle = { viewModel.toggleNavigation() },
-            onARModeToggle = { viewModel.toggleARMode() },
-            on3DViewToggle = { viewModel.toggle3DView() },
-            modifier = if (isPipOverlay) {
-                Modifier
-                    .align(Alignment.BottomStart)
-                    .navigationBarsPadding()
-                    .padding(start = 16.dp, bottom = 16.dp)
-            } else {
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 16.dp)
-            }
+            onRecordToggle = {
+                if (captureStartMs == null) {
+                    captureStartMs = System.currentTimeMillis()
+                } else {
+                    captureStartMs = null
+                }
+            },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp)
         )
 
-        GlassIconButton(
-            onClick = { showTrafficDialog = true },
-            icon = Icons.Default.ReportProblem,
-            contentDescription = "Report traffic",
-            modifier = if (isPipOverlay) {
-                Modifier
-                    .align(Alignment.BottomEnd)
-                    .navigationBarsPadding()
-                    .padding(end = 20.dp, bottom = 240.dp)
-                    .size(48.dp)
-            } else {
-                Modifier
+        // Traffic report button (only when not navigating)
+        if (!uiState.isNavigating) {
+            GlassIconButton(
+                onClick = { showTrafficDialog = true },
+                icon = Icons.Default.ReportProblem,
+                contentDescription = "Report traffic",
+                modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .navigationBarsPadding()
                     .padding(end = 20.dp, bottom = 16.dp)
                     .size(48.dp)
-            }
-        )
+            )
+        }
     }
 }
 
@@ -1340,96 +1125,9 @@ private fun CaptureTimerHud(
     }
 }
 
-@Composable
-private fun ArStatusHud(
-    isScanning: Boolean,
-    arMode: ARMode,
-    trafficSeverity: String?,
-    lastInferenceMs: Double?,
-    objectCount: Int,
-    modifier: Modifier = Modifier
-) {
-    val arLabel = when (arMode) {
-        ARMode.FULL_AR -> "AR: Full"
-        ARMode.PIP_OVERLAY -> "AR: PiP"
-        ARMode.DISABLED -> "AR: Off"
-    }
-    val mlLabel = if (isScanning) "ML: On" else "ML: Off"
-    val inferenceLabel = when {
-        !isScanning -> "Inference: --"
-        lastInferenceMs != null -> "Inference ${lastInferenceMs.toInt()}ms"
-        else -> "Inference --"
-    }
-    val objectLabel = if (isScanning) "Objects ${objectCount}" else "Objects --"
-    val trafficLabel = trafficSeverity?.let {
-        "Traffic: ${it.replaceFirstChar { c -> c.titlecase() }}"
-    } ?: "Traffic: --"
-    val transition = rememberInfiniteTransition(label = "mlPulse")
-    val pulse by transition.animateFloat(
-        initialValue = 0.4f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "mlPulseAlpha"
-    )
-    val pulseAlpha = if (isScanning) pulse else 0.4f
-    GlassCardElevated(modifier = modifier) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Text(text = arLabel, color = Color.White, fontSize = 12.sp)
-            Text(text = mlLabel, color = WayyColors.TextSecondary, fontSize = 11.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Spacer(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .background(
-                            color = WayyColors.PrimaryLime.copy(alpha = pulseAlpha),
-                            shape = RoundedCornerShape(3.dp)
-                        )
-                )
-                Text(text = inferenceLabel, color = WayyColors.TextSecondary, fontSize = 11.sp)
-            }
-            Text(text = objectLabel, color = WayyColors.TextSecondary, fontSize = 11.sp)
-            Text(text = trafficLabel, color = WayyColors.TextSecondary, fontSize = 11.sp)
-        }
-    }
-}
 
-private fun buildLaneConfigs(direction: com.wayy.ui.components.navigation.Direction): List<LaneConfig> {
-    return when (direction) {
-        com.wayy.ui.components.navigation.Direction.LEFT ->
-            listOf(
-                LaneConfig("left", true),
-                LaneConfig("center", false),
-                LaneConfig("right", false)
-            )
-        com.wayy.ui.components.navigation.Direction.RIGHT ->
-            listOf(
-                LaneConfig("left", false),
-                LaneConfig("center", false),
-                LaneConfig("right", true)
-            )
-        com.wayy.ui.components.navigation.Direction.SLIGHT_LEFT ->
-            listOf(
-                LaneConfig("left", true),
-                LaneConfig("center", true),
-                LaneConfig("right", false)
-            )
-        com.wayy.ui.components.navigation.Direction.SLIGHT_RIGHT ->
-            listOf(
-                LaneConfig("left", false),
-                LaneConfig("center", true),
-                LaneConfig("right", true)
-            )
-        else ->
-            listOf(
-                LaneConfig("left", false),
-                LaneConfig("center", true),
-                LaneConfig("right", false)
-            )
-    }
-}
+
+
 
 private fun poiCategoryLabel(category: String): String {
     return when (category.trim().lowercase()) {
@@ -1457,47 +1155,4 @@ private fun poiCategoryColor(category: String) = when (category.trim().lowercase
     else -> WayyColors.Info
 }
 
-private fun buildArTurnInstructions(uiState: NavigationUiState): List<ArTurnInstruction> {
-    val instructions = mutableListOf<ArTurnInstruction>()
-    val route = uiState.currentRoute ?: return emptyList()
-    val steps = route.legs.firstOrNull()?.steps ?: return emptyList()
-    val currentIndex = uiState.currentStepIndex
-    
-    for (i in currentIndex until kotlin.math.min(currentIndex + 3, steps.size)) {
-        val step = steps[i]
-        val distanceText = NavigationUtils.formatDistance(step.distance)
-        val direction = when (step.maneuver.type.lowercase()) {
-            "turn" -> when (step.maneuver.modifier?.lowercase()) {
-                "left" -> Direction.LEFT
-                "right" -> Direction.RIGHT
-                "slight left" -> Direction.SLIGHT_LEFT
-                "slight right" -> Direction.SLIGHT_RIGHT
-                "sharp left" -> Direction.LEFT
-                "sharp right" -> Direction.RIGHT
-                "uturn" -> Direction.U_TURN
-                else -> Direction.STRAIGHT
-            }
-            "continue" -> when (step.maneuver.modifier?.lowercase()) {
-                "left" -> Direction.SLIGHT_LEFT
-                "right" -> Direction.SLIGHT_RIGHT
-                "uturn" -> Direction.U_TURN
-                else -> Direction.STRAIGHT
-            }
-            "merge" -> when (step.maneuver.modifier?.lowercase()) {
-                "left" -> Direction.SLIGHT_LEFT
-                "right" -> Direction.SLIGHT_RIGHT
-                else -> Direction.STRAIGHT
-            }
-            "fork" -> when (step.maneuver.modifier?.lowercase()) {
-                "left" -> Direction.SLIGHT_LEFT
-                "right" -> Direction.SLIGHT_RIGHT
-                else -> Direction.STRAIGHT
-            }
-            "arrive" -> Direction.STRAIGHT
-            "depart" -> Direction.STRAIGHT
-            else -> Direction.STRAIGHT
-        }
-        instructions.add(ArTurnInstruction(direction, distanceText, step.instruction))
-    }
-    return instructions
-}
+

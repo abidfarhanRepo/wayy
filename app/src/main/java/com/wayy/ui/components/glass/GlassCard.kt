@@ -74,7 +74,7 @@ fun GlassPanel(
         modifier = modifier,
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = WayyColors.GlassLight.copy(alpha = 0.5f)
+            containerColor = WayyColors.GlassLight.copy(alpha = 0.85f)
         ),
         border = null,
         content = content

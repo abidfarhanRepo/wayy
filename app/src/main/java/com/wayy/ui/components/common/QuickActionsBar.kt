@@ -3,14 +3,17 @@ package com.wayy.ui.components.common
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.ViewInAr
-import androidx.compose.material.icons.outlined.ViewInAr
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.wayy.ui.components.glass.GlassIconButton
 import com.wayy.ui.components.glass.GlassPanel
@@ -20,23 +23,19 @@ import com.wayy.ui.theme.WayyColors
  * Quick actions bar with primary navigation actions
  *
  * @param isNavigating Whether navigation is active
- * @param isARActive Whether AR mode is active
- * @param is3DActive Whether 3D view is active
+ * @param isRecording Whether recording is active
  * @param onMenuClick Open menu callback
  * @param onNavigateToggle Toggle navigation callback
- * @param onARModeToggle Toggle AR mode callback
- * @param on3DViewToggle Toggle 3D view callback
+ * @param onRecordToggle Toggle recording callback
  * @param modifier Modifier for the bar
  */
 @Composable
 fun QuickActionsBar(
     isNavigating: Boolean = false,
-    isARActive: Boolean = false,
-    is3DActive: Boolean = false,
+    isRecording: Boolean = false,
     onMenuClick: () -> Unit = {},
     onNavigateToggle: () -> Unit = {},
-    onARModeToggle: () -> Unit = {},
-    on3DViewToggle: () -> Unit = {},
+    onRecordToggle: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     GlassPanel(modifier = modifier) {
@@ -50,15 +49,16 @@ fun QuickActionsBar(
                 contentDescription = "Search"
             )
 
-            GlassIconButton(
-                onClick = onARModeToggle,
-                icon = if (isARActive) Icons.Default.ViewInAr else Icons.Outlined.ViewInAr,
-                contentDescription = "AR mode",
-                active = isARActive,
-                activeColor = WayyColors.PrimaryPurple
-            )
-
             if (isNavigating) {
+                // Record button
+                GlassIconButton(
+                    onClick = onRecordToggle,
+                    icon = Icons.Default.Videocam,
+                    contentDescription = if (isRecording) "Stop recording" else "Start recording",
+                    active = isRecording,
+                    activeColor = WayyColors.Error
+                )
+
                 GlassIconButton(
                     onClick = onNavigateToggle,
                     icon = Icons.Default.Close,
@@ -68,10 +68,10 @@ fun QuickActionsBar(
                 )
             } else {
                 GlassIconButton(
-                    onClick = on3DViewToggle,
+                    onClick = onNavigateToggle,
                     icon = Icons.Default.Explore,
-                    contentDescription = "3D view",
-                    active = is3DActive,
+                    contentDescription = "Start navigation",
+                    active = false,
                     activeColor = WayyColors.PrimaryOrange
                 )
             }

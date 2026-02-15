@@ -16,7 +16,7 @@ import java.io.File
 
 class OfflineMapManager(
     private val context: Context,
-    private val diagnosticLogger: DiagnosticLogger
+    private val diagnosticLogger: DiagnosticLogger? = null
 ) {
     private data class ResolvedStyle(
         val url: String,
@@ -56,21 +56,21 @@ class OfflineMapManager(
         val resolvedStyle = resolveStyleUrl(tilejsonUrlOverride, mapStyleUrlOverride)
 
         if (resolvedStyle.isEmbedded) {
-            diagnosticLogger.log(tag = TAG, message = "Using embedded PMTiles - offline download not needed")
+            diagnosticLogger?.log(tag = TAG, message = "Using embedded PMTiles - offline download not needed")
             return
         }
 
         offlineManager.listOfflineRegions(object : OfflineManager.ListOfflineRegionsCallback {
             override fun onList(offlineRegions: Array<OfflineRegion>?) {
                 if (!offlineRegions.isNullOrEmpty()) {
-                    diagnosticLogger.log(tag = TAG, message = "Offline region already exists")
+                    diagnosticLogger?.log(tag = TAG, message = "Offline region already exists")
                     return
                 }
                 createRegion(center, radiusKm, minZoom, maxZoom, tilejsonUrlOverride, mapStyleUrlOverride)
             }
 
             override fun onError(error: String) {
-                diagnosticLogger.log(tag = TAG, message = "Offline list error", level = "ERROR", data = mapOf("error" to error))
+                diagnosticLogger?.log(tag = TAG, message = "Offline list error", level = "ERROR", data = mapOf("error" to error))
                 createRegion(center, radiusKm, minZoom, maxZoom, tilejsonUrlOverride, mapStyleUrlOverride)
             }
         })
@@ -97,7 +97,7 @@ class OfflineMapManager(
         offlineManager.createOfflineRegion(definition, metadata, object : OfflineManager.CreateOfflineRegionCallback {
             override fun onCreate(offlineRegion: OfflineRegion) {
                 isDownloading = true
-                diagnosticLogger.log(tag = TAG, message = "Offline download started")
+                diagnosticLogger?.log(tag = TAG, message = "Offline download started")
                 offlineRegion.setObserver(object : OfflineRegion.OfflineRegionObserver {
                     override fun onStatusChanged(status: OfflineRegionStatus) {
                         val completed = status.isComplete
@@ -106,7 +106,7 @@ class OfflineMapManager(
                         } else {
                             0.0
                         }
-                        diagnosticLogger.log(
+                        diagnosticLogger?.log(
                             tag = TAG,
                             message = "Offline progress",
                             data = mapOf(
@@ -123,7 +123,7 @@ class OfflineMapManager(
 
                     override fun onError(error: OfflineRegionError) {
                         isDownloading = false
-                        diagnosticLogger.log(
+                        diagnosticLogger?.log(
                             tag = TAG,
                             message = "Offline error",
                             level = "ERROR",
@@ -133,7 +133,7 @@ class OfflineMapManager(
 
                     override fun mapboxTileCountLimitExceeded(limit: Long) {
                         isDownloading = false
-                        diagnosticLogger.log(
+                        diagnosticLogger?.log(
                             tag = TAG,
                             message = "Offline limit exceeded",
                             level = "ERROR",
@@ -146,7 +146,7 @@ class OfflineMapManager(
 
             override fun onError(error: String) {
                 isDownloading = false
-                diagnosticLogger.log(tag = TAG, message = "Offline create error", level = "ERROR", data = mapOf("error" to error))
+                diagnosticLogger?.log(tag = TAG, message = "Offline create error", level = "ERROR", data = mapOf("error" to error))
                 Log.e(TAG, "Offline create error: $error")
             }
         })
@@ -165,16 +165,16 @@ class OfflineMapManager(
             .ifBlank { BuildConfig.PMTILES_TILEJSON_URL }
 
         if (tilejsonUrl.isNotBlank()) {
-            return ResolvedStyle(buildStyleFromTemplate(tilejsonUrl), tilejsonUrl.startsWith("pmtiles://asset://"))
+            return ResolvedStyle(buildStyleFromTemplate(tilejsonUrl), false)
         }
 
         val styleUrl = mapStyleUrlOverride?.trim().orEmpty()
             .ifBlank { BuildConfig.MAP_STYLE_URL }
         if (styleUrl.isNotBlank()) {
-            return ResolvedStyle(styleUrl, styleUrl.contains("pmtiles://asset://") || styleUrl.contains("asset://protomaps_style.json"))
+            return ResolvedStyle(styleUrl, styleUrl.startsWith("asset://") || styleUrl.contains("pmtiles://asset://"))
         }
 
-        return ResolvedStyle(DEFAULT_STYLE_URL, true)
+        return ResolvedStyle(DEFAULT_STYLE_URL, false)
     }
 
     private fun buildStyleFromTemplate(sourceUrl: String): String {
@@ -182,15 +182,15 @@ class OfflineMapManager(
         val rawStyle = context.assets.open(PROTOMAPS_STYLE_ASSET)
             .bufferedReader()
             .use { it.readText() }
-        cacheStyleFile.writeText(rawStyle.replace(DEFAULT_PMTILES_SOURCE_URL, sourceUrl))
+        cacheStyleFile.writeText(rawStyle.replace(TILEJSON_PLACEHOLDER, sourceUrl))
         return "file://${cacheStyleFile.absolutePath}"
     }
 
     companion object {
         private const val TAG = "WayyOffline"
         private const val PROTOMAPS_STYLE_ASSET = "protomaps_style.json"
-        private const val DEFAULT_STYLE_URL = "asset://protomaps_style.json"
-        private const val DEFAULT_PMTILES_SOURCE_URL = "pmtiles://asset://doha.pmtiles"
+        private const val TILEJSON_PLACEHOLDER = "__TILEJSON_URL__"
+        private const val DEFAULT_STYLE_URL = "asset://osm_raster_style.json"
     }
 }
 data class OfflineSummary(

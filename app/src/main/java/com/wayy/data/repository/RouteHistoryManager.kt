@@ -64,10 +64,18 @@ class RouteHistoryManager(private val context: Context) {
     suspend fun addRoute(route: RouteHistoryItem) {
         context.routeHistoryDataStore.updateData { currentHistory ->
             val mutableHistory = currentHistory.toMutableList()
-            val existingIndex = mutableHistory.indexOfFirst { it.id == route.id }
+            
+            // Deduplicate by start/end coordinates (rounded to 4 decimals = ~11m accuracy)
+            val existingIndex = mutableHistory.indexOfFirst { existing ->
+                kotlin.math.abs(existing.startLat - route.startLat) < 0.0001 &&
+                kotlin.math.abs(existing.startLng - route.startLng) < 0.0001 &&
+                kotlin.math.abs(existing.endLat - route.endLat) < 0.0001 &&
+                kotlin.math.abs(existing.endLng - route.endLng) < 0.0001
+            }
             
             if (existingIndex >= 0) {
-                mutableHistory[existingIndex] = route
+                // Update existing route with new timestamp
+                mutableHistory[existingIndex] = route.copy(id = mutableHistory[existingIndex].id)
             } else {
                 mutableHistory.add(0, route)
             }

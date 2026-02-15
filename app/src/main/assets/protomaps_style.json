@@ -6,7 +6,7 @@
   "sources": {
     "protomaps": {
       "type": "vector",
-      "url": "pmtiles://asset://doha.pmtiles",
+      "url": "__TILEJSON_URL__",
       "attribution": "<a href=\"https://protomaps.com\">Protomaps</a> © <a href=\"https://openstreetmap.org\">OpenStreetMap</a>"
     }
   },
