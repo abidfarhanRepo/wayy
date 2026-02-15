@@ -12,24 +12,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.wayy.ui.theme.WayyColors
 
-/**
- * Glass morphic card with frosted glass effect
- *
- * @param modifier Modifier for the card
- * @param borderColor Optional border color
- * @param content Card content
- */
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
-    borderColor: Color = WayyColors.GlassBorder,
+    borderColor: Color = WayyColors.SurfaceVariant,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = WayyColors.GlassLight
+            containerColor = WayyColors.Surface
         ),
         border = BorderStroke(
             width = 1.dp,
@@ -39,20 +32,17 @@ fun GlassCard(
     )
 }
 
-/**
- * Glass card with darker background for elevated content
- */
 @Composable
 fun GlassCardElevated(
     modifier: Modifier = Modifier,
-    borderColor: Color = WayyColors.GlassBorder,
+    borderColor: Color = WayyColors.SurfaceVariant,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = WayyColors.GlassMedium
+            containerColor = WayyColors.SurfaceVariant
         ),
         border = BorderStroke(
             width = 1.dp,
@@ -62,9 +52,6 @@ fun GlassCardElevated(
     )
 }
 
-/**
- * Minimal glass panel for subtle backgrounds
- */
 @Composable
 fun GlassPanel(
     modifier: Modifier = Modifier,
@@ -74,9 +61,12 @@ fun GlassPanel(
         modifier = modifier,
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = WayyColors.GlassLight.copy(alpha = 0.85f)
+            containerColor = WayyColors.Surface
         ),
-        border = null,
+        border = BorderStroke(
+            width = 1.dp,
+            color = WayyColors.SurfaceVariant
+        ),
         content = content
     )
 }

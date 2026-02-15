@@ -12,11 +12,11 @@ class TileCacheManager(private val context: Context) {
     }
 
     fun initialize() {
-        setCacheSize(MAX_CACHE_SIZE_BYTES)
+        setCacheSize()
         Log.d(TAG, "TileCacheManager initialized with ${MAX_CACHE_SIZE_BYTES / (1024 * 1024)}MB cache")
     }
 
-    private fun setCacheSize(sizeBytes: Long) {
+    private fun setCacheSize() {
         try {
             val cacheDir = File(context.cacheDir, "maplibre_cache")
             if (!cacheDir.exists()) {

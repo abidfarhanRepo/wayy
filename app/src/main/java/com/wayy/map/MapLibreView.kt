@@ -32,13 +32,8 @@ fun MapLibreView(
     modifier: Modifier = Modifier,
     onMapReady: (MapLibreMap) -> Unit = {},
     onCreate: ((MapView) -> Unit)? = null,
-    onStart: ((MapView) -> Unit)? = null,
-    onResume: ((MapView) -> Unit)? = null,
-    onPause: ((MapView) -> Unit)? = null,
-    onStop: ((MapView) -> Unit)? = null,
     onDestroy: ((MapView) -> Unit)? = null
 ) {
-    val context = LocalContext.current
     var mapView by remember { mutableStateOf<MapView?>(null) }
 
     AndroidView(
@@ -54,7 +49,7 @@ fun MapLibreView(
                 }
             }
         },
-        update = { view ->
+        update = { _ ->
             // Update callbacks if they change
         }
     )
@@ -81,7 +76,6 @@ fun MapViewAutoLifecycle(
     modifier: Modifier = Modifier,
     onMapReady: (MapLibreMap) -> Unit = {}
 ) {
-    val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
 
     val mapView = remember { manager.createMapView(onMapReady) }

@@ -208,27 +208,24 @@ class NavigationViewModel(
                 data = mapOf("destination" to destinationName)
             )
 
-            when (val result = routeRepository.getRoute(currentLoc, destination)) {
-                is kotlin.Result -> {
-                    if (result.isSuccess) {
-                        val route = result.getOrNull()
-                        if (route != null) {
-                            initializeNavigation(route, destination, destinationName)
-                        } else {
-                            _uiState.value = _uiState.value.copy(
-                                navigationState = NavigationState.Idle,
-                                isLoading = false,
-                                error = "Failed to calculate route"
-                            )
-                        }
-                    } else {
-                        _uiState.value = _uiState.value.copy(
-                            navigationState = NavigationState.Idle,
-                            isLoading = false,
-                            error = result.exceptionOrNull()?.message ?: "Failed to calculate route"
-                        )
-                    }
+            val result = routeRepository.getRoute(currentLoc, destination)
+            if (result.isSuccess) {
+                val route = result.getOrNull()
+                if (route != null) {
+                    initializeNavigation(route, destination, destinationName)
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        navigationState = NavigationState.Idle,
+                        isLoading = false,
+                        error = "Failed to calculate route"
+                    )
                 }
+            } else {
+                _uiState.value = _uiState.value.copy(
+                    navigationState = NavigationState.Idle,
+                    isLoading = false,
+                    error = result.exceptionOrNull()?.message ?: "Failed to calculate route"
+                )
             }
         }
     }
@@ -592,8 +589,6 @@ class NavigationViewModel(
         val currentInstruction = turnProvider.getCurrentInstruction(location, route, newStepIndex)
         val nextInstruction = turnProvider.getNextInstruction(route, newStepIndex)
         val currentStep = route.legs.firstOrNull()?.steps?.getOrNull(newStepIndex)
-        val maneuverType = currentStep?.maneuver?.type?.lowercase().orEmpty()
-        val distanceToTurn = currentInstruction?.distanceMeters ?: Double.MAX_VALUE
 
         refreshTrafficStatsIfNeeded(currentInstruction?.streetName.orEmpty())
         refreshTrafficHistoryIfNeeded(currentInstruction?.streetName.orEmpty())

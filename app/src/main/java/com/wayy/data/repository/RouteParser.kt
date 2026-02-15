@@ -137,7 +137,7 @@ object RouteParser {
             "exit roundabout" -> "Exit roundabout"
             "rotary" -> "Enter roundabout"
             "exit rotary" -> "Exit roundabout"
-            else -> maneuver.type.replace("_", " ").capitalize()
+            else -> maneuver.type.replace("_", " ").replaceFirstChar { it.uppercase() }
         }
 
         return if (streetName.isNotEmpty() && maneuver.type != "arrive") {

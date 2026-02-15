@@ -32,7 +32,7 @@ fun SpeedLimitIndicator(
 
     val bgColor = when {
         isOverLimit -> WayyColors.Error
-        isApproachingLimit -> WayyColors.PrimaryOrange
+        isApproachingLimit -> WayyColors.Warning
         else -> Color.White
     }
 
@@ -115,13 +115,13 @@ fun CurrentRoadLabel(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(WayyColors.BgSecondary.copy(alpha = 0.85f))
+            .background(WayyColors.Surface.copy(alpha = 0.85f))
             .padding(horizontal = 12.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = roadName,
-            color = WayyColors.TextSecondary,
+            color = WayyColors.PrimaryMuted,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium
         )
@@ -139,7 +139,7 @@ fun CurrentRoadDisplay(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(WayyColors.BgSecondary.copy(alpha = 0.9f))
+            .background(WayyColors.Surface.copy(alpha = 0.9f))
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
@@ -152,7 +152,7 @@ fun CurrentRoadDisplay(
         if (!nextRoadName.isNullOrEmpty()) {
             Text(
                 text = "→ $nextRoadName",
-                color = WayyColors.TextSecondary,
+                color = WayyColors.PrimaryMuted,
                 fontSize = 12.sp
             )
         }

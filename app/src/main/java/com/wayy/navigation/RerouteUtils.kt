@@ -79,20 +79,16 @@ class RerouteUtils(
     ): RerouteResult {
         lastRerouteTime = System.currentTimeMillis()
 
-        return when (val result = routeRepository.getRoute(origin, destination)) {
-            is kotlin.Result -> {
-                if (result.isSuccess) {
-                    val route = result.getOrNull()
-                    if (route != null) {
-                        RerouteResult.Success(route)
-                    } else {
-                        RerouteResult.Failed("No route found")
-                    }
-                } else {
-                    RerouteResult.Failed(result.exceptionOrNull()?.message ?: "Route calculation failed")
-                }
+        val result = routeRepository.getRoute(origin, destination)
+        return if (result.isSuccess) {
+            val route = result.getOrNull()
+            if (route != null) {
+                RerouteResult.Success(route)
+            } else {
+                RerouteResult.Failed("No route found")
             }
-            else -> RerouteResult.Failed("Unknown error")
+        } else {
+            RerouteResult.Failed(result.exceptionOrNull()?.message ?: "Route calculation failed")
         }
     }
 

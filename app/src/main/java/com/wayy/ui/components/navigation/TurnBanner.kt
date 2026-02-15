@@ -14,7 +14,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
@@ -41,86 +40,72 @@ fun TurnBanner(
     )
 
     val backgroundColor by animateColorAsState(
-        targetValue = if (isApproaching) WayyColors.PrimaryLime else WayyColors.BgSecondary,
+        targetValue = if (isApproaching) WayyColors.SurfaceVariant else WayyColors.Surface,
         animationSpec = tween(300),
         label = "bg_color"
     )
 
-    val textColor by animateColorAsState(
-        targetValue = if (isApproaching) WayyColors.BgPrimary else Color.White,
+    val accentColor by animateColorAsState(
+        targetValue = if (isApproaching) WayyColors.Accent else WayyColors.PrimaryMuted,
         animationSpec = tween(300),
-        label = "text_color"
+        label = "accent_color"
     )
 
-    val pulseAlpha by rememberInfiniteTransition(label = "pulse").animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.8f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(600, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse"
-    )
-
-    GlassCard(
-        modifier = modifier.fillMaxWidth()
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(backgroundColor, RoundedCornerShape(12.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(backgroundColor.copy(alpha = 0.95f))
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(72.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
-                    .background(
-                        if (isApproaching) WayyColors.BgPrimary.copy(alpha = pulseAlpha)
-                        else WayyColors.PrimaryLime.copy(alpha = 0.15f)
-                    ),
+                    .background(if (isApproaching) WayyColors.Accent.copy(alpha = 0.15f) else WayyColors.SurfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = getDirectionIcon(direction),
                     contentDescription = instruction,
-                    tint = if (isApproaching) WayyColors.PrimaryLime else textColor,
+                    tint = accentColor,
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(28.dp)
                         .graphicsLayer { rotationZ = iconRotation }
                 )
             }
 
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
                         text = distanceText,
-                        color = textColor,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-1).sp
+                        color = WayyColors.Primary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = getDirectionText(direction),
-                        color = if (isApproaching) textColor.copy(alpha = 0.8f) else WayyColors.TextSecondary,
-                        fontSize = 18.sp,
+                        color = WayyColors.PrimaryMuted,
+                        fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(bottom = 4.dp)
+                        modifier = Modifier.padding(bottom = 2.dp)
                     )
                 }
 
                 if (streetName.isNotEmpty()) {
                     Text(
                         text = streetName,
-                        color = if (isApproaching) textColor.copy(alpha = 0.7f) else WayyColors.TextSecondary,
-                        fontSize = 15.sp,
+                        color = WayyColors.PrimaryMuted,
+                        fontSize = 13.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -129,22 +114,12 @@ fun TurnBanner(
                 if (metricsText.isNotBlank()) {
                     Text(
                         text = metricsText,
-                        color = if (isApproaching) textColor.copy(alpha = 0.7f) else WayyColors.TextSecondary,
+                        color = WayyColors.PrimaryMuted,
                         fontSize = 12.sp,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-            }
-
-            if (isApproaching) {
-                Spacer(modifier = Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier
-                        .size(12.dp)
-                        .clip(CircleShape)
-                        .background(WayyColors.PrimaryLime.copy(alpha = pulseAlpha))
-                )
             }
         }
     }
@@ -165,8 +140,8 @@ fun CompactTurnIndicator(
     Row(
         modifier = modifier
             .background(
-                WayyColors.BgSecondary.copy(alpha = 0.9f),
-                RoundedCornerShape(12.dp)
+                WayyColors.Surface,
+                RoundedCornerShape(8.dp)
             )
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -175,15 +150,15 @@ fun CompactTurnIndicator(
         Icon(
             imageVector = getDirectionIcon(direction),
             contentDescription = null,
-            tint = WayyColors.PrimaryLime,
+            tint = WayyColors.Accent,
             modifier = Modifier
-                .size(24.dp)
+                .size(20.dp)
                 .graphicsLayer { rotationZ = iconRotation }
         )
         Text(
             text = distanceText,
-            color = Color.White,
-            fontSize = 16.sp,
+            color = WayyColors.Primary,
+            fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold
         )
     }

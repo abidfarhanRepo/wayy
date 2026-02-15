@@ -191,7 +191,7 @@ fun RouteOverviewScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(WayyColors.BgPrimary)
+            .background(WayyColors.Background)
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -224,7 +224,7 @@ fun RouteOverviewScreen(
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Search",
-                            tint = WayyColors.PrimaryLime
+                            tint = WayyColors.Accent
                         )
                     },
                     singleLine = true
@@ -233,7 +233,7 @@ fun RouteOverviewScreen(
 
     if (isSearching && activeTab == RouteOverviewTab.SEARCH) {
         Spacer(modifier = Modifier.height(32.dp))
-        CircularProgressIndicator(color = WayyColors.PrimaryLime)
+        CircularProgressIndicator(color = WayyColors.Accent)
     }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -296,19 +296,19 @@ fun RouteOverviewScreen(
                             }
                             Text(
                                 text = "Current source: $sourceLabel",
-                                color = WayyColors.TextSecondary,
+                                color = WayyColors.PrimaryMuted,
                                 fontSize = 12.sp
                             )
                             if (effectiveTilejson.isNotBlank()) {
                                 Text(
                                     text = "TileJSON: $effectiveTilejson",
-                                    color = WayyColors.TextSecondary,
+                                    color = WayyColors.PrimaryMuted,
                                     fontSize = 11.sp
                                 )
                             } else if (effectiveStyleUrl.isNotBlank()) {
                                 Text(
                                     text = "Style URL: $effectiveStyleUrl",
-                                    color = WayyColors.TextSecondary,
+                                    color = WayyColors.PrimaryMuted,
                                     fontSize = 11.sp
                                 )
                             }
@@ -360,7 +360,7 @@ fun RouteOverviewScreen(
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = "Offline caching uses the current tile source.",
-                                color = WayyColors.TextSecondary,
+                                color = WayyColors.PrimaryMuted,
                                 fontSize = 11.sp
                             )
                         }
@@ -391,7 +391,7 @@ fun RouteOverviewScreen(
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = summaryText,
-                                color = WayyColors.TextSecondary,
+                                color = WayyColors.PrimaryMuted,
                                 fontSize = 12.sp
                             )
                             Spacer(modifier = Modifier.height(8.dp))
@@ -452,13 +452,13 @@ fun RouteOverviewScreen(
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = "Runs models locally on the phone. Requires app/src/main/assets/ml/model.tflite.",
-                                color = WayyColors.TextSecondary,
+                                color = WayyColors.PrimaryMuted,
                                 fontSize = 12.sp
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = "Model",
-                                color = WayyColors.TextSecondary,
+                                color = WayyColors.PrimaryMuted,
                                 fontSize = 12.sp
                             )
                             Spacer(modifier = Modifier.height(6.dp))
@@ -499,7 +499,7 @@ fun RouteOverviewScreen(
                                 } else {
                                     "Exeed model missing: push to ${context.filesDir}/models/exeed_model.tflite"
                                 },
-                                color = WayyColors.TextSecondary,
+                                color = WayyColors.PrimaryMuted,
                                 fontSize = 11.sp
                             )
                             Spacer(modifier = Modifier.height(8.dp))
@@ -510,7 +510,7 @@ fun RouteOverviewScreen(
                             ) {
                                 Text(
                                     text = "Enable scanning",
-                                    color = WayyColors.TextSecondary,
+                                    color = WayyColors.PrimaryMuted,
                                     fontSize = 12.sp
                                 )
                             Switch(
@@ -541,13 +541,13 @@ fun RouteOverviewScreen(
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = "Model for lane segmentation detection.",
-                                color = WayyColors.TextSecondary,
+                                color = WayyColors.PrimaryMuted,
                                 fontSize = 12.sp
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = "Lane Model",
-                                color = WayyColors.TextSecondary,
+                                color = WayyColors.PrimaryMuted,
                                 fontSize = 12.sp
                             )
                             Spacer(modifier = Modifier.height(6.dp))
@@ -582,13 +582,13 @@ fun RouteOverviewScreen(
                                 } else {
                                     "Custom lane model missing: push to ${context.filesDir}/models/lane_model.tflite"
                                 },
-                                color = WayyColors.TextSecondary,
+                                color = WayyColors.PrimaryMuted,
                                 fontSize = 11.sp
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "Current: ${if (laneDefaultSelected) "Asset" else if (laneCustomSelected) "Device Storage" else "Custom path"}",
-                                color = WayyColors.PrimaryLime,
+                                color = WayyColors.Accent,
                                 fontSize = 11.sp
                             )
                         }
@@ -650,7 +650,7 @@ fun RouteOverviewScreen(
                         item {
                             Text(
                                 text = "No recordings yet",
-                                color = WayyColors.TextSecondary,
+                                color = WayyColors.PrimaryMuted,
                                 fontSize = 13.sp
                             )
                         }
@@ -674,11 +674,11 @@ fun RouteOverviewScreen(
                     Icon(
                         imageVector = if (showSearchResults) Icons.Default.Search else Icons.Default.History,
                         contentDescription = null,
-                        tint = WayyColors.PrimaryLime
+                        tint = WayyColors.Accent
                     )
                     Text(
                         text = if (showSearchResults) "Results" else "Local POIs",
-                        color = WayyColors.TextSecondary,
+                        color = WayyColors.PrimaryMuted,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -707,7 +707,7 @@ fun RouteOverviewScreen(
                             item {
                                 Text(
                                     text = "No results found",
-                                    color = WayyColors.TextSecondary,
+                                    color = WayyColors.PrimaryMuted,
                                     fontSize = 13.sp
                                 )
                             }
@@ -729,7 +729,7 @@ fun RouteOverviewScreen(
                             item {
                                 Text(
                                     text = "No recent routes yet",
-                                    color = WayyColors.TextSecondary,
+                                    color = WayyColors.PrimaryMuted,
                                     fontSize = 13.sp
                                 )
                             }
@@ -763,7 +763,7 @@ fun RouteOverviewScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "Category",
-                            color = WayyColors.TextSecondary,
+                            color = WayyColors.PrimaryMuted,
                             fontSize = 12.sp
                         )
                         Spacer(modifier = Modifier.height(6.dp))
@@ -833,7 +833,7 @@ fun RouteOverviewScreen(
                         item {
                             Text(
                                 text = "No local POIs yet",
-                                color = WayyColors.TextSecondary,
+                                color = WayyColors.PrimaryMuted,
                                 fontSize = 13.sp
                             )
                         }
@@ -879,7 +879,7 @@ fun RouteOverviewScreen(
                                         onClick = { onPoiSelected(poi) },
                                         leadingIcon = poiCategoryIcon(poi.category),
                                         accentColor = poiCategoryColor(poi.category),
-                                        containerColor = WayyColors.BgSecondary
+                                        containerColor = WayyColors.Surface
                                     )
                                 }
                             )
@@ -896,7 +896,7 @@ fun RouteOverviewScreen(
                 text = {
                     Text(
                         text = "Remove ${poi.name} from your POIs?",
-                        color = WayyColors.TextSecondary
+                        color = WayyColors.PrimaryMuted
                     )
                 },
                 confirmButton = {
@@ -914,9 +914,9 @@ fun RouteOverviewScreen(
                         Text("Cancel")
                     }
                 },
-                containerColor = WayyColors.BgSecondary,
+                containerColor = WayyColors.Surface,
                 titleContentColor = Color.White,
-                textContentColor = WayyColors.TextSecondary
+                textContentColor = WayyColors.PrimaryMuted
             )
         }
 
@@ -939,8 +939,8 @@ fun RecentRouteCard(
     distance: String,
     onClick: () -> Unit,
     leadingIcon: ImageVector? = null,
-    accentColor: Color = WayyColors.PrimaryLime,
-    containerColor: Color = WayyColors.GlassLight
+    accentColor: Color = WayyColors.Accent,
+    containerColor: Color = WayyColors.Surface
 ) {
     Card(
         onClick = onClick,
@@ -953,7 +953,7 @@ fun RecentRouteCard(
         ),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            WayyColors.GlassBorder
+            WayyColors.SurfaceVariant
         )
     ) {
         Row(
@@ -986,7 +986,7 @@ fun RecentRouteCard(
                     )
                     Text(
                         text = address,
-                        color = WayyColors.TextSecondary,
+                        color = WayyColors.PrimaryMuted,
                         fontSize = 13.sp
                     )
                 }
@@ -1031,13 +1031,13 @@ private fun CaptureCard(entry: CaptureEntry) {
                 )
                 Text(
                     text = entry.timestampLabel,
-                    color = WayyColors.TextSecondary,
+                    color = WayyColors.PrimaryMuted,
                     fontSize = 12.sp
                 )
             }
             Text(
                 text = formatBytes(entry.sizeBytes),
-                color = WayyColors.PrimaryCyan,
+                color = WayyColors.AccentLight,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -1090,15 +1090,15 @@ private data class PoiCategoryOption(
 )
 
 private val poiCategoryOptions = listOf(
-    PoiCategoryOption("gas", "Gas", Icons.Default.LocalGasStation, WayyColors.PrimaryOrange),
-    PoiCategoryOption("food", "Food", Icons.Default.Restaurant, WayyColors.PrimaryLime),
-    PoiCategoryOption("parking", "Parking", Icons.Default.LocalParking, WayyColors.PrimaryCyan),
-    PoiCategoryOption("lodging", "Lodging", Icons.Default.Hotel, WayyColors.PrimaryPurple),
-    PoiCategoryOption("general", "General", Icons.Default.Place, WayyColors.Info)
+    PoiCategoryOption("gas", "Gas", Icons.Default.LocalGasStation, WayyColors.Warning),
+    PoiCategoryOption("food", "Food", Icons.Default.Restaurant, WayyColors.Accent),
+    PoiCategoryOption("parking", "Parking", Icons.Default.LocalParking, WayyColors.AccentLight),
+    PoiCategoryOption("lodging", "Lodging", Icons.Default.Hotel, WayyColors.Accent),
+    PoiCategoryOption("general", "General", Icons.Default.Place, WayyColors.Accent)
 )
 
 private val poiCategoryFilters = listOf(
-    PoiCategoryOption("all", "All", Icons.Default.Place, WayyColors.TextSecondary)
+    PoiCategoryOption("all", "All", Icons.Default.Place, WayyColors.PrimaryMuted)
 ) + poiCategoryOptions
 
 private fun poiCategoryLabel(category: String): String {
@@ -1112,7 +1112,7 @@ private fun poiCategoryIcon(category: String): ImageVector {
 
 private fun poiCategoryColor(category: String): Color {
     return poiCategoryOptions.firstOrNull { it.id == category.lowercase() }?.color
-        ?: WayyColors.Info
+        ?: WayyColors.Accent
 }
 
 private fun formatBytes(bytes: Long): String {

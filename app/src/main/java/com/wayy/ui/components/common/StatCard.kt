@@ -37,7 +37,7 @@ fun StatCard(
     icon: ImageVector,
     value: String,
     label: String,
-    iconColor: Color = WayyColors.PrimaryLime,
+    iconColor: Color = WayyColors.Accent,
     modifier: Modifier = Modifier
 ) {
     GlassCard(
@@ -76,7 +76,7 @@ fun StatCard(
                 )
                 Text(
                     text = label,
-                    color = WayyColors.TextSecondary,
+                    color = WayyColors.PrimaryMuted,
                     fontSize = 10.sp,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
                 )
@@ -97,7 +97,7 @@ fun RoadQualityCard(
         icon = Icons.Default.Terrain,
         value = quality,
         label = "Road Quality",
-        iconColor = WayyColors.PrimaryLime,
+        iconColor = WayyColors.Accent,
         modifier = modifier
     )
 }
@@ -111,7 +111,7 @@ fun GForceCard(
         icon = Icons.Default.Speed,
         value = gForce,
         label = "G-Force",
-        iconColor = WayyColors.PrimaryCyan,
+        iconColor = WayyColors.AccentLight,
         modifier = modifier
     )
 }

@@ -29,11 +29,6 @@ fun CameraPreviewCard(
     turnBearing: Float,
     isApproaching: Boolean,
     showGuidance: Boolean = true,
-    detections: List<MlDetection> = emptyList(),
-    showBoxes: Boolean = false,
-    showLanes: Boolean = true,
-    leftLane: List<LanePoint> = emptyList(),
-    rightLane: List<LanePoint> = emptyList(),
     hasCameraPermission: Boolean,
     onVideoCaptureReady: ((androidx.camera.video.VideoCapture<androidx.camera.video.Recorder>) -> Unit)? = null,
     frameAnalyzer: androidx.camera.core.ImageAnalysis.Analyzer? = null,
@@ -54,7 +49,7 @@ fun CameraPreviewCard(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
-                            color = WayyColors.BgSecondary.copy(alpha = 0.8f),
+                            color = WayyColors.Surface.copy(alpha = 0.8f),
                             shape = RoundedCornerShape(20.dp)
                         )
                         .padding(12.dp),

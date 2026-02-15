@@ -2,7 +2,6 @@ package com.wayy.ui.components.glass
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
@@ -21,45 +20,26 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.wayy.ui.theme.WayyColors
-import com.wayy.ui.theme.SpringDamping
-import com.wayy.ui.theme.SpringStiffness
-import com.wayy.ui.theme.animateWithSpring
 
-/**
- * Glass morphic button with blur effect and spring animations
- *
- * @param onClick Callback when button is clicked
- * @param icon Icon to display
- * @param label Text label below icon
- * @param active Whether button is in active state
- * @param activeColor Color to use for active state
- * @param modifier Modifier for the button
- */
 @Composable
 fun GlassButton(
     onClick: () -> Unit,
     icon: ImageVector,
     label: String,
     active: Boolean = false,
-    activeColor: Color = WayyColors.PrimaryLime,
+    activeColor: Color = WayyColors.Accent,
     modifier: Modifier = Modifier
 ) {
-    val scale = animateWithSpring(
-        targetValue = if (active) 1.05f else 1f,
-        stiffness = SpringStiffness.LOW,
-        damping = SpringDamping.BOUNCY
-    )
-
     Button(
         onClick = onClick,
-        modifier = modifier.scale(scale),
+        modifier = modifier,
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (active) activeColor else WayyColors.BgSecondary,
+            containerColor = if (active) activeColor else WayyColors.Surface,
             contentColor = Color.White
         ),
         border = BorderStroke(
             width = 1.dp,
-            color = if (active) activeColor else WayyColors.BgTertiary
+            color = if (active) activeColor else WayyColors.SurfaceVariant
         ),
         shape = RoundedCornerShape(24.dp),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
@@ -82,42 +62,27 @@ fun GlassButton(
     }
 }
 
-/**
- * Icon-only glass button variant
- */
 @Composable
 fun GlassIconButton(
     onClick: () -> Unit,
     icon: ImageVector,
     contentDescription: String?,
     active: Boolean = false,
-    activeColor: Color = WayyColors.PrimaryLime,
+    activeColor: Color = WayyColors.Accent,
     modifier: Modifier = Modifier
 ) {
-    val scale = animateWithSpring(
-        targetValue = if (active) 1.1f else 1f,
-        stiffness = SpringStiffness.LOW,
-        damping = SpringDamping.BOUNCY
-    )
-
     Button(
         onClick = onClick,
-        modifier = modifier.scale(scale),
+        modifier = modifier,
         colors = ButtonDefaults.buttonColors(
-            containerColor = if (active)
-                activeColor.copy(alpha = 0.3f)
-            else
-                WayyColors.GlassLight,
+            containerColor = if (active) activeColor else WayyColors.Surface,
             contentColor = if (active) activeColor else Color.White
         ),
         border = BorderStroke(
             width = 1.dp,
-            color = if (active)
-                activeColor.copy(alpha = 0.5f)
-            else
-                WayyColors.GlassBorder
+            color = if (active) activeColor else WayyColors.SurfaceVariant
         ),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         contentPadding = PaddingValues(12.dp)
     ) {
         Icon(

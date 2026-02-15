@@ -1,20 +1,11 @@
 package com.wayy.ui.theme
 
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 
-/**
- * MapPulse Ultimate Animation System
- * Spring physics for fluid, natural motion
- */
-
-// Spring animation configurations
 enum class SpringStiffness(val value: Float) {
     LOW(200f),
     MEDIUM(400f),
@@ -24,7 +15,7 @@ enum class SpringStiffness(val value: Float) {
 enum class SpringDamping(val value: Float) {
     BOUNCY(0.5f),
     MEDIUM(0.8f),
-    STIFF(1.0f);
+    STIFF(1.0f)
 }
 
 @Composable
@@ -32,14 +23,15 @@ fun animateWithSpring(
     targetValue: Float,
     stiffness: SpringStiffness = SpringStiffness.MEDIUM,
     damping: SpringDamping = SpringDamping.MEDIUM
-): Float {
+): State<Float> {
     return animateFloatAsState(
         targetValue = targetValue,
-        animationSpec = SpringSpec(
+        animationSpec = spring(
             dampingRatio = damping.value,
             stiffness = stiffness.value
-        )
-    ).value
+        ),
+        label = "spring"
+    )
 }
 
 @Composable
@@ -47,26 +39,27 @@ fun rememberScaleState(
     isActive: Boolean,
     activeScale: Float = 1.05f,
     inactiveScale: Float = 1f
-): Float {
-    var scale by remember { mutableStateOf(inactiveScale) }
-    val targetScale = if (isActive) activeScale else inactiveScale
-
-    scale = animateWithSpring(
-        targetValue = targetScale,
-        stiffness = SpringStiffness.LOW,
-        damping = SpringDamping.BOUNCY
+): State<Float> {
+    return animateFloatAsState(
+        targetValue = if (isActive) activeScale else inactiveScale,
+        animationSpec = spring(
+            dampingRatio = SpringDamping.BOUNCY.value,
+            stiffness = SpringStiffness.LOW.value
+        ),
+        label = "scale"
     )
-
-    return scale
 }
 
 @Composable
 fun rememberAlphaState(
     isVisible: Boolean
-): Float {
-    return animateWithSpring(
+): State<Float> {
+    return animateFloatAsState(
         targetValue = if (isVisible) 1f else 0f,
-        stiffness = SpringStiffness.MEDIUM,
-        damping = SpringDamping.MEDIUM
+        animationSpec = spring(
+            dampingRatio = SpringDamping.MEDIUM.value,
+            stiffness = SpringStiffness.MEDIUM.value
+        ),
+        label = "alpha"
     )
 }

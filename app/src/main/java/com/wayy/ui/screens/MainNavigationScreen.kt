@@ -100,7 +100,6 @@ import com.wayy.ui.components.camera.CameraPreviewCard
 import com.wayy.ui.components.camera.CameraPreviewSurface
 import com.wayy.ui.components.camera.HiddenCameraForML
 import com.wayy.ui.components.common.QuickActionsBar
-import com.wayy.ui.components.common.RoadQualityCard
 import com.wayy.ui.components.common.TopBar
 import com.wayy.ui.components.glass.GlassIconButton
 import com.wayy.ui.components.gauges.SpeedometerSmall
@@ -166,7 +165,7 @@ fun MainNavigationScreen(
     var lastDetections by remember { mutableStateOf(emptyList<MlDetection>()) }
     var laneResult by remember { mutableStateOf<LaneSegmentationResult?>(null) }
     val scanningState = rememberUpdatedState(uiState.isScanning)
-    val mlAnalyzer = remember(mlManager, mainHandler) {
+    remember(mlManager, mainHandler) {
         mlManager?.let { manager ->
             MlFrameAnalyzer(
                 mlManager = manager,
@@ -197,7 +196,6 @@ fun MainNavigationScreen(
     val trafficSpeedMps by viewModel.trafficSpeedMps.collectAsState()
     val latestPois = rememberUpdatedState(localPois)
     val deviceBearing by orientationManager.currentBearing.collectAsState()
-    val activity = context as? Activity
     val tilejsonOverride = mapSettings.tilejsonUrl
     val mapStyleOverride = mapSettings.mapStyleUrl
 
@@ -324,12 +322,6 @@ fun MainNavigationScreen(
     ) { permissions ->
         hasLocationPermission = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-    }
-
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        hasCameraPermission = granted
     }
 
     LaunchedEffect(Unit) {
@@ -517,7 +509,7 @@ fun MainNavigationScreen(
     androidx.compose.foundation.layout.Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(WayyColors.BgPrimary)
+            .background(WayyColors.Background)
     ) {
         MapViewAutoLifecycle(
             manager = mapManager,
@@ -687,16 +679,15 @@ fun MainNavigationScreen(
             }
         }
 
-        if (!uiState.isNavigating) {
-            TopBar(
-                onMenuClick = onMenuClick,
-                onSettingsClick = onSettingsClick,
-                isScanningActive = uiState.isScanning,
-                gpsAccuracyMeters = uiState.currentAccuracyMeters,
-                showSettings = false,
-                modifier = Modifier.align(Alignment.TopCenter)
-            )
-        }
+        TopBar(
+            onMenuClick = onMenuClick,
+            onSettingsClick = onSettingsClick,
+            isScanningActive = uiState.isScanning,
+            gpsAccuracyMeters = uiState.currentAccuracyMeters,
+            showSettings = false,
+            isNavigating = uiState.isNavigating,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
 
         // North-up map rotation toggle button
         if (uiState.isNavigating) {
@@ -738,7 +729,7 @@ fun MainNavigationScreen(
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 90.dp),
-                colors = CardDefaults.cardColors(containerColor = WayyColors.BgSecondary)
+                colors = CardDefaults.cardColors(containerColor = WayyColors.Surface)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -766,11 +757,11 @@ fun MainNavigationScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = poiCategoryLabel(poi.category),
-                        color = WayyColors.TextSecondary
+                        color = WayyColors.PrimaryMuted
                     )
                     Text(
                         text = "Distance: $distanceText",
-                        color = WayyColors.TextSecondary
+                        color = WayyColors.PrimaryMuted
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
@@ -795,7 +786,7 @@ fun MainNavigationScreen(
                 title = { Text(text = "Report traffic", color = Color.White) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(text = "Select severity", color = WayyColors.TextSecondary)
+                        Text(text = "Select severity", color = WayyColors.PrimaryMuted)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("light", "moderate", "heavy").forEach { level ->
                                 Button(
@@ -811,9 +802,9 @@ fun MainNavigationScreen(
                     }
                 },
                 confirmButton = {},
-                containerColor = WayyColors.BgSecondary,
+                containerColor = WayyColors.Surface,
                 titleContentColor = Color.White,
-                textContentColor = WayyColors.TextSecondary
+                textContentColor = WayyColors.PrimaryMuted
             )
         }
 
@@ -839,9 +830,9 @@ fun MainNavigationScreen(
                                     onClick = { addPoiCategory = category },
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = if (addPoiCategory == category) {
-                                            WayyColors.PrimaryLime
+                                            WayyColors.Accent
                                         } else {
-                                            WayyColors.BgTertiary
+                                            WayyColors.SurfaceVariant
                                         }
                                     )
                                 ) {
@@ -881,9 +872,9 @@ fun MainNavigationScreen(
                         Text("Cancel")
                     }
                 },
-                containerColor = WayyColors.BgSecondary,
+                containerColor = WayyColors.Surface,
                 titleContentColor = Color.White,
-                textContentColor = WayyColors.TextSecondary
+                textContentColor = WayyColors.PrimaryMuted
             )
         }
 
@@ -971,7 +962,7 @@ fun MainNavigationScreen(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .navigationBarsPadding()
-                .padding(start = 16.dp, bottom = 88.dp)
+                .padding(start = 16.dp, bottom = 80.dp)
         )
 
         QuickActionsBar(
@@ -988,8 +979,8 @@ fun MainNavigationScreen(
             },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(bottom = 16.dp)
         )
 
         // Traffic report button (only when not navigating)
@@ -1027,7 +1018,7 @@ private fun TrafficHistoryChart(bars: List<Double>) {
                     .width(8.dp)
                     .height((48 * heightRatio).dp)
                     .background(
-                        color = WayyColors.PrimaryCyan.copy(alpha = 0.85f),
+                        color = WayyColors.Accent.copy(alpha = 0.85f),
                         shape = RoundedCornerShape(4.dp)
                 )
             )
@@ -1148,11 +1139,11 @@ private fun poiCategoryIcon(category: String) = when (category.trim().lowercase(
 }
 
 private fun poiCategoryColor(category: String) = when (category.trim().lowercase()) {
-    "gas" -> WayyColors.PrimaryOrange
-    "food" -> WayyColors.PrimaryLime
-    "parking" -> WayyColors.PrimaryCyan
-    "lodging" -> WayyColors.PrimaryPurple
-    else -> WayyColors.Info
+    "gas" -> WayyColors.Warning
+    "food" -> WayyColors.Accent
+    "parking" -> WayyColors.AccentLight
+    "lodging" -> WayyColors.Accent
+    else -> WayyColors.PrimaryMuted
 }
 
 

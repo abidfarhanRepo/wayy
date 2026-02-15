@@ -114,14 +114,14 @@ fun NavigationOverlay(
                     .size(50.dp)
                     .clip(CircleShape)
                     .background(
-                        color = WayyColors.PrimaryLime.copy(alpha = 0.2f)
+                        color = WayyColors.Accent.copy(alpha = 0.2f)
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = directionIcon,
                     contentDescription = instructionText,
-                    tint = WayyColors.PrimaryLime,
+                    tint = WayyColors.Accent,
                     modifier = Modifier.size(28.dp)
                 )
             }
@@ -140,7 +140,7 @@ fun NavigationOverlay(
                 if (streetName.isNotEmpty()) {
                     Text(
                         text = streetName,
-                        color = WayyColors.TextSecondary,
+                        color = WayyColors.PrimaryMuted,
                         fontSize = 13.sp
                     )
                 }
@@ -152,7 +152,7 @@ fun NavigationOverlay(
             ) {
                 Text(
                     text = distance,
-                    color = WayyColors.PrimaryLime,
+                    color = WayyColors.Accent,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -192,7 +192,7 @@ fun DirectionArrow(
         Icon(
             imageVector = Icons.Filled.ArrowForward,
             contentDescription = null,
-            tint = WayyColors.PrimaryLime,
+            tint = WayyColors.Accent,
             modifier = Modifier
                 .size(80.dp)
                 .padding(8.dp)

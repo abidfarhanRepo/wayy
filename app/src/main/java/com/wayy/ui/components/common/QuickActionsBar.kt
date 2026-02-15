@@ -1,34 +1,32 @@
 package com.wayy.ui.components.common
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.wayy.ui.components.glass.GlassIconButton
-import com.wayy.ui.components.glass.GlassPanel
+import androidx.compose.ui.unit.sp
 import com.wayy.ui.theme.WayyColors
 
-/**
- * Quick actions bar with primary navigation actions
- *
- * @param isNavigating Whether navigation is active
- * @param isRecording Whether recording is active
- * @param onMenuClick Open menu callback
- * @param onNavigateToggle Toggle navigation callback
- * @param onRecordToggle Toggle recording callback
- * @param modifier Modifier for the bar
- */
 @Composable
 fun QuickActionsBar(
     isNavigating: Boolean = false,
@@ -38,43 +36,83 @@ fun QuickActionsBar(
     onRecordToggle: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    GlassPanel(modifier = modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(WayyColors.Surface)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            GlassIconButton(
-                onClick = onMenuClick,
+            ActionButton(
                 icon = Icons.Default.Search,
-                contentDescription = "Search"
+                label = "Search",
+                onClick = onMenuClick,
+                active = false
             )
 
             if (isNavigating) {
-                // Record button
-                GlassIconButton(
+                ActionButton(
+                    icon = if (isRecording) Icons.Default.Videocam else Icons.Default.Videocam,
+                    label = if (isRecording) "Stop" else "Record",
                     onClick = onRecordToggle,
-                    icon = Icons.Default.Videocam,
-                    contentDescription = if (isRecording) "Stop recording" else "Start recording",
                     active = isRecording,
                     activeColor = WayyColors.Error
                 )
 
-                GlassIconButton(
-                    onClick = onNavigateToggle,
+                ActionButton(
                     icon = Icons.Default.Close,
-                    contentDescription = "Stop navigation",
+                    label = "Stop",
+                    onClick = onNavigateToggle,
                     active = true,
                     activeColor = WayyColors.Error
                 )
             } else {
-                GlassIconButton(
-                    onClick = onNavigateToggle,
+                ActionButton(
                     icon = Icons.Default.Explore,
-                    contentDescription = "Start navigation",
-                    active = false,
-                    activeColor = WayyColors.PrimaryOrange
+                    label = "Navigate",
+                    onClick = onNavigateToggle,
+                    active = false
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ActionButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    active: Boolean,
+    activeColor: Color = WayyColors.Accent
+) {
+    androidx.compose.material3.Button(
+        onClick = onClick,
+        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+            containerColor = if (active) activeColor else Color.Transparent,
+            contentColor = if (active) Color.White else WayyColors.Primary
+        ),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.height(48.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = label,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }
