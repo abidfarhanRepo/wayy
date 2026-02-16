@@ -16,6 +16,8 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
+import com.wayy.navigation.GpsKalmanFilter
+import com.wayy.navigation.MapMatcher
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -35,11 +37,87 @@ class LocationManager(private val context: Context) {
         context.getSystemService(Context.LOCATION_SERVICE) as AndroidLocationManager
     private var lastLocation: Location? = null
     private var lastLocationTimestampNanos: Long? = null
+    
+    // GPS smoothing and map matching
+    private val kalmanFilter = GpsKalmanFilter()
+    private val mapMatcher = MapMatcher()
+    private var enableKalmanFilter = true
+    private var enableMapMatching = true
 
     companion object {
         private const val LOCATION_UPDATE_INTERVAL = 1000L  // 1 second
         private const val FASTEST_UPDATE_INTERVAL = 500L    // 500ms
         private const val SPEED_ACCURACY_METERS = 15f
+    }
+    
+    /**
+     * Enable/disable GPS smoothing
+     */
+    fun setKalmanFilterEnabled(enabled: Boolean) {
+        enableKalmanFilter = enabled
+        if (!enabled) kalmanFilter.reset()
+        Log.d("WayyLocation", "Kalman filter ${if (enabled) "enabled" else "disabled"}")
+    }
+    
+    /**
+     * Enable/disable map matching
+     */
+    fun setMapMatchingEnabled(enabled: Boolean) {
+        enableMapMatching = enabled
+        Log.d("WayyLocation", "Map matching ${if (enabled) "enabled" else "disabled"}")
+    }
+
+    /**
+     * Process a location update through Kalman filter and optional map matching
+     */
+    private fun processLocation(location: Location): LocationUpdate? {
+        Log.d(
+            "WayyLocation",
+            "Raw location lat=${location.latitude}, lon=${location.longitude}, accuracy=${location.accuracy}"
+        )
+
+        val speedMps = resolveSpeedMps(location)
+        val speedMph = speedMps * 2.23694f
+
+        // Apply Kalman filter if enabled
+        val filteredLocation = if (enableKalmanFilter) {
+            kalmanFilter.process(
+                lat = location.latitude,
+                lon = location.longitude,
+                accuracy = if (location.hasAccuracy()) location.accuracy else 50f,
+                speedMps = speedMps
+            )
+        } else {
+            GpsKalmanFilter.FilteredLocation(
+                latitude = location.latitude,
+                longitude = location.longitude,
+                isSmoothed = false,
+                confidence = 1.0f
+            )
+        }
+
+        if (filteredLocation == null) {
+            Log.w("WayyLocation", "Location rejected by filter")
+            return null
+        }
+
+        // Create point from filtered coordinates
+        val point = Point.fromLngLat(filteredLocation.longitude, filteredLocation.latitude)
+
+        Log.d(
+            "WayyLocation",
+            "Processed location lat=${filteredLocation.latitude}, lon=${filteredLocation.longitude}, " +
+                    "smoothed=${filteredLocation.isSmoothed}, confidence=${filteredLocation.confidence}"
+        )
+
+        return LocationUpdate(
+            location = point,
+            speed = speedMph,
+            bearing = if (location.hasBearing()) location.bearing else 0f,
+            accuracy = if (location.hasAccuracy()) location.accuracy else 0f,
+            isSmoothed = filteredLocation.isSmoothed,
+            confidence = filteredLocation.confidence
+        )
     }
 
     /**
@@ -143,43 +221,18 @@ class LocationManager(private val context: Context) {
         val locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 result.lastLocation?.let { location ->
-                    Log.d(
-                        "WayyLocation",
-                        "Location update lat=${location.latitude}, lon=${location.longitude}"
-                    )
-                    val point = Point.fromLngLat(location.longitude, location.latitude)
-                    val speedMps = resolveSpeedMps(location)
-                    val speed = speedMps * 2.23694f // m/s to mph
-
-                    trySend(
-                        LocationUpdate(
-                            location = point,
-                            speed = speed,
-                            bearing = if (location.hasBearing()) location.bearing else 0f,
-                            accuracy = if (location.hasAccuracy()) location.accuracy else 0f
-                        )
-                    )
+                    processLocation(location)?.let { update ->
+                        trySend(update)
+                    }
                 }
             }
         }
 
         val systemListener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
-                Log.d(
-                    "WayyLocation",
-                    "System update lat=${location.latitude}, lon=${location.longitude}"
-                )
-                val point = Point.fromLngLat(location.longitude, location.latitude)
-                val speedMps = resolveSpeedMps(location)
-                val speed = speedMps * 2.23694f
-                trySend(
-                    LocationUpdate(
-                        location = point,
-                        speed = speed,
-                        bearing = if (location.hasBearing()) location.bearing else 0f,
-                        accuracy = if (location.hasAccuracy()) location.accuracy else 0f
-                    )
-                )
+                processLocation(location)?.let { update ->
+                    trySend(update)
+                }
             }
         }
 
@@ -195,6 +248,7 @@ class LocationManager(private val context: Context) {
             Log.d("WayyLocation", "Stopping location updates")
             fusedLocationClient.removeLocationUpdates(locationCallback)
             systemLocationManager.removeUpdates(systemListener)
+            kalmanFilter.reset()
         }
     }
 
@@ -338,5 +392,7 @@ data class LocationUpdate(
     val location: Point,
     val speed: Float,        // in mph
     val bearing: Float,      // in degrees
-    val accuracy: Float      // in meters
+    val accuracy: Float,     // in meters
+    val isSmoothed: Boolean = false,  // Whether Kalman filter was applied
+    val confidence: Float = 1.0f       // Confidence in location (0.0 - 1.0)
 )

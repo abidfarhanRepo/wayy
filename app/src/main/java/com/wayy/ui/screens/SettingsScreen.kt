@@ -22,6 +22,8 @@ import com.wayy.data.settings.MapSettings
 import com.wayy.data.settings.MapSettingsRepository
 import com.wayy.data.settings.MlSettings
 import com.wayy.data.settings.MlSettingsRepository
+import com.wayy.data.settings.NavigationSettings
+import com.wayy.data.settings.NavigationSettingsRepository
 import androidx.activity.compose.BackHandler
 import com.wayy.data.settings.DEFAULT_LANE_MODEL_PATH
 import com.wayy.data.settings.DEFAULT_MODEL_PATH
@@ -42,6 +44,8 @@ fun SettingsScreen(
     val mapSettings by mapSettingsRepository.settingsFlow.collectAsState(initial = MapSettings())
     val mlSettingsRepository = remember { MlSettingsRepository(context) }
     val mlSettings by mlSettingsRepository.settingsFlow.collectAsState(initial = MlSettings())
+    val navigationSettingsRepository = remember { NavigationSettingsRepository(context) }
+    val navigationSettings by navigationSettingsRepository.settingsFlow.collectAsState(initial = NavigationSettings())
 
     var tilejsonInput by remember { mutableStateOf(mapSettings.tilejsonUrl) }
     var styleUrlInput by remember { mutableStateOf(mapSettings.mapStyleUrl) }
@@ -114,6 +118,28 @@ fun SettingsScreen(
             }
 
             SettingsSection(title = "Navigation") {
+                SwitchSetting(
+                    title = "GPS Smoothing",
+                    subtitle = "Reduce GPS jitter using Kalman filter",
+                    checked = navigationSettings.gpsSmoothingEnabled,
+                    onCheckedChange = { enabled ->
+                        scope.launch {
+                            navigationSettingsRepository.setGpsSmoothingEnabled(enabled)
+                        }
+                    }
+                )
+
+                SwitchSetting(
+                    title = "Snap to Roads",
+                    subtitle = "Keep location marker on roads",
+                    checked = navigationSettings.mapMatchingEnabled,
+                    onCheckedChange = { enabled ->
+                        scope.launch {
+                            navigationSettingsRepository.setMapMatchingEnabled(enabled)
+                        }
+                    }
+                )
+
                 SwitchSetting(
                     title = "Voice Guidance",
                     subtitle = "Audio instructions for turns",

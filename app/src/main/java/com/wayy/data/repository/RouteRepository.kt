@@ -191,13 +191,16 @@ class RouteRepository {
     private fun buildSearchAttempts(location: Point?): List<SearchAttempt> {
         return if (location != null) {
             listOf(
-                SearchAttempt(location, radiusKm = 10.0, bounded = true, countryCode = "qa"),
-                SearchAttempt(location, radiusKm = 50.0, bounded = false, countryCode = "qa"),
-                SearchAttempt(location, radiusKm = 150.0, bounded = false, countryCode = null)
+                // Search near current location (most relevant)
+                SearchAttempt(location, radiusKm = 10.0, bounded = true, countryCode = null),
+                SearchAttempt(location, radiusKm = 50.0, bounded = false, countryCode = null),
+                SearchAttempt(location, radiusKm = 150.0, bounded = false, countryCode = null),
+                // Global search as fallback
+                SearchAttempt(location, radiusKm = null, bounded = false, countryCode = null)
             )
         } else {
             listOf(
-                SearchAttempt(null, radiusKm = null, bounded = false, countryCode = "qa"),
+                // Global search when no location available
                 SearchAttempt(null, radiusKm = null, bounded = false, countryCode = null)
             )
         }

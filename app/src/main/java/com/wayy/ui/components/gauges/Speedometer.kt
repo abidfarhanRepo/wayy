@@ -15,8 +15,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -117,34 +119,41 @@ fun SpeedometerSmall(
     val animatedSpeed by animateFloatAsState(
         targetValue = speed,
         animationSpec = spring(
-            dampingRatio = 0.8f,
-            stiffness = 500f
+            dampingRatio = 0.75f,
+            stiffness = 400f
         ),
         label = "speed_small"
     )
 
-    val width = 110.dp
-    val height = 64.dp
+    val width = 120.dp
+    val height = 72.dp
 
     Box(
         modifier = modifier
             .width(width)
             .height(height)
-            .clip(RoundedCornerShape(12.dp))
-            .background(WayyColors.Surface),
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        WayyColors.Surface,
+                        WayyColors.Surface.copy(alpha = 0.92f)
+                    )
+                )
+            ),
         contentAlignment = Alignment.BottomCenter
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val barHeight = 8.dp.toPx()
-            val barWidth = size.width - 20.dp.toPx()
-            val startX = 10.dp.toPx()
-            val bottomY = size.height - 10.dp.toPx()
+            val barHeight = 10.dp.toPx()
+            val barWidth = size.width - 24.dp.toPx()
+            val startX = 12.dp.toPx()
+            val bottomY = size.height - 14.dp.toPx()
 
             drawRoundRect(
-                color = WayyColors.SurfaceVariant,
+                color = WayyColors.SurfaceVariant.copy(alpha = 0.6f),
                 topLeft = Offset(startX, bottomY - barHeight),
                 size = Size(barWidth, barHeight),
-                cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx())
             )
 
             val progress = (animatedSpeed / maxSpeed).coerceIn(0f, 1f)
@@ -156,33 +165,59 @@ fun SpeedometerSmall(
                 else -> WayyColors.Accent
             }
 
+            if (progress > 0.7f) {
+                drawRoundRect(
+                    color = progressColor,
+                    topLeft = Offset(startX, bottomY - barHeight),
+                    size = Size(progressWidth, barHeight),
+                    cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx())
+                )
+            } else {
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(WayyColors.Accent, WayyColors.AccentLight)
+                    ),
+                    topLeft = Offset(startX, bottomY - barHeight),
+                    size = Size(progressWidth, barHeight),
+                    cornerRadius = CornerRadius(5.dp.toPx(), 5.dp.toPx())
+                )
+            }
+
+            val glowHeight = 3.dp.toPx()
             drawRoundRect(
-                color = progressColor,
-                topLeft = Offset(startX, bottomY - barHeight),
-                size = Size(progressWidth, barHeight),
-                cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                color = WayyColors.Accent.copy(alpha = 0.3f),
+                topLeft = Offset(startX, bottomY - barHeight - glowHeight),
+                size = Size(progressWidth, glowHeight),
+                cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
             )
         }
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text(
-                text = animatedSpeed.toInt().toString(),
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold,
-                color = WayyColors.Primary
-            )
-            Text(
-                text = unit,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium,
-                color = WayyColors.PrimaryMuted
-            )
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = animatedSpeed.toInt().toString(),
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = WayyColors.Primary
+                )
+                Spacer(modifier = Modifier.width(2.dp))
+                Text(
+                    text = unit,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = WayyColors.PrimaryMuted,
+                    modifier = Modifier.padding(bottom = 3.dp)
+                )
+            }
         }
     }
 }

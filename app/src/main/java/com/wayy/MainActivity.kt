@@ -20,6 +20,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.activity.compose.BackHandler
 import com.wayy.ui.components.common.AppDrawer
 import com.wayy.ui.screens.MainNavigationScreen
 import com.wayy.ui.screens.SearchDestinationScreen
@@ -92,6 +93,10 @@ fun AppContent(hasPermission: Boolean, onRequestPermission: () -> Unit) {
             throw IllegalArgumentException("Unknown ViewModel class")
         }
     })
+
+    BackHandler(enabled = currentScreen != AppScreen.Main) {
+        currentScreen = AppScreen.Main
+    }
 
     LaunchedEffect(hasPermission) { if (!hasPermission) { onRequestPermission() } }
 

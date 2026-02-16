@@ -15,22 +15,59 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wayy.data.repository.PlaceResult
 import com.wayy.ui.theme.WayyColors
+import com.wayy.viewmodel.NavigationViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchDestinationScreen(
+    viewModel: NavigationViewModel = viewModel(),
     onBack: () -> Unit,
     onDestinationSelected: (PlaceResult) -> Unit,
     onRecentRouteClick: (PlaceResult) -> Unit
 ) {
+    val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
-    var isSearching by remember { mutableStateOf(false) }
-    var searchResults by remember { mutableStateOf<List<PlaceResult>>(emptyList()) }
+    var searchJob by remember { mutableStateOf<Job?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    
+    // Get search state from ViewModel
+    val isSearching by viewModel.isSearching.collectAsState()
+    val searchResults by viewModel.searchResults.collectAsState()
+    val searchError by viewModel.searchError.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
+    val currentLocation = uiState.currentLocation
+    
+    // Debounced search
+    LaunchedEffect(searchQuery) {
+        if (searchQuery.length >= 2) {
+            // Cancel previous search
+            searchJob?.cancel()
+            // Debounce 300ms
+            delay(300)
+            // Perform search
+            viewModel.searchPlaces(searchQuery, currentLocation)
+        } else if (searchQuery.isEmpty()) {
+            viewModel.clearSearchResults()
+        }
+    }
+    
+    // Show error if any
+    LaunchedEffect(searchError) {
+        searchError?.let {
+            // Could show a snackbar here
+        }
+    }
+    
     val recentSearches = remember {
         listOf(
             PlaceResult(place_id = 1, lat = 25.2854, lon = 51.5310, display_name = "Doha, Qatar"),
@@ -107,24 +144,50 @@ fun SearchDestinationScreen(
                 }
             }
         } else {
-            // Show search results placeholder
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = null,
-                        tint = WayyColors.PrimaryMuted,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Search for \"$searchQuery\"",
-                        color = WayyColors.PrimaryMuted,
-                        fontSize = 14.sp
-                    )
+            // Show actual search results
+            if (isSearching) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = WayyColors.Accent)
+                }
+            } else if (searchResults.isNotEmpty()) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    items(searchResults) { place ->
+                        SearchResultItem(
+                            place = place,
+                            onClick = { 
+                                onDestinationSelected(place)
+                                viewModel.clearSearchResults()
+                            }
+                        )
+                    }
+                }
+            } else if (searchQuery.length >= 2) {
+                // No results found
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.SearchOff,
+                            contentDescription = null,
+                            tint = WayyColors.PrimaryMuted,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "No results for \"$searchQuery\"",
+                            color = WayyColors.PrimaryMuted,
+                            fontSize = 14.sp
+                        )
+                    }
                 }
             }
         }
@@ -136,6 +199,19 @@ private fun RecentSearchItem(
     place: PlaceResult,
     onClick: () -> Unit
 ) {
+    SearchResultItem(
+        place = place,
+        onClick = onClick,
+        icon = Icons.Default.History
+    )
+}
+
+@Composable
+private fun SearchResultItem(
+    place: PlaceResult,
+    onClick: () -> Unit,
+    icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Default.Place
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -145,18 +221,19 @@ private fun RecentSearchItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = Icons.Default.History,
+            imageVector = icon,
             contentDescription = null,
             tint = WayyColors.PrimaryMuted,
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = place.display_name,
-            color = WayyColors.Primary,
-            fontSize = 14.sp,
-            modifier = Modifier.weight(1f)
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = place.display_name,
+                color = WayyColors.Primary,
+                fontSize = 14.sp
+            )
+        }
         Icon(
             imageVector = Icons.Default.ChevronRight,
             contentDescription = null,

@@ -80,6 +80,8 @@ import com.wayy.data.settings.MapSettings
 import com.wayy.data.settings.MapSettingsRepository
 import com.wayy.data.settings.MlSettings
 import com.wayy.data.settings.MlSettingsRepository
+import com.wayy.data.settings.NavigationSettings
+import com.wayy.data.settings.NavigationSettingsRepository
 import com.wayy.data.sensor.LocationManager
 import com.wayy.data.sensor.DeviceOrientationManager
 import com.wayy.data.repository.LocalPoiItem
@@ -158,6 +160,8 @@ fun MainNavigationScreen(
     val mapSettings by mapSettingsRepository.settingsFlow.collectAsState(initial = MapSettings())
     val mlSettingsRepository = remember { MlSettingsRepository(context) }
     val mlSettings by mlSettingsRepository.settingsFlow.collectAsState(initial = MlSettings())
+    val navigationSettingsRepository = remember { NavigationSettingsRepository(context) }
+    val navigationSettings by navigationSettingsRepository.settingsFlow.collectAsState(initial = NavigationSettings())
     val mlManager = remember { viewModel.getMlManager() }
     val laneManager = remember { LaneSegmentationManager(context) }
     val detectionTracker = remember { DetectionTracker() }
@@ -302,6 +306,12 @@ fun MainNavigationScreen(
             Log.e("WayyMap", "Failed to configure map style", e)
             snackbarHostState.showSnackbar("Map initialization failed")
         }
+    }
+
+    // Apply navigation settings (GPS smoothing, map matching)
+    LaunchedEffect(navigationSettings) {
+        locationManager.setKalmanFilterEnabled(navigationSettings.gpsSmoothingEnabled)
+        locationManager.setMapMatchingEnabled(navigationSettings.mapMatchingEnabled)
     }
 
     var hasLocationPermission by remember {
@@ -586,6 +596,9 @@ fun MainNavigationScreen(
             }
         }
 
+        // Traffic segments removed - they were cluttering the map
+        // To re-enable traffic visualization, uncomment the code below:
+        /*
         LaunchedEffect(trafficSegments, uiState.isNavigating) {
             try {
                 mapManager.getMapLibreMap()?.style?.getSourceAs<GeoJsonSource>(
@@ -614,6 +627,7 @@ fun MainNavigationScreen(
                 Log.e("WayyMap", "Failed to update traffic segments", e)
             }
         }
+        */
 
         LaunchedEffect(uiState.isNavigating, uiState.currentRoute) {
             try {
@@ -687,7 +701,9 @@ fun MainNavigationScreen(
             gpsAccuracyMeters = uiState.currentAccuracyMeters,
             showSettings = false,
             isNavigating = uiState.isNavigating,
-            modifier = Modifier.align(Alignment.TopCenter)
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
         )
 
         // North-up map rotation toggle button
@@ -890,7 +906,7 @@ fun MainNavigationScreen(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()
-                .padding(top = 6.dp)
+                .padding(top = 70.dp)
         ) {
             val currentStreet = uiState.currentStreet.ifBlank { "Unknown" }
             val reportCount = trafficReports.count { report ->
@@ -963,7 +979,7 @@ fun MainNavigationScreen(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .navigationBarsPadding()
-                .padding(start = 16.dp, bottom = 80.dp)
+                .padding(start = 16.dp, bottom = 100.dp)
         )
 
         QuickActionsBar(
