@@ -5,6 +5,9 @@ A clean, modern Android navigation app with solid dark UI and essential navigati
 ## Features
 
 - **Clean Dark UI** - Solid #000000 background with blue accents, no glassmorphism
+- **GPS Smoothing** - Kalman filter reduces GPS jitter and jumping
+- **Map Matching** - Snaps GPS coordinates to roads for accurate positioning
+- **Global Search** - Search for places worldwide using Nominatim/Photon
 - **Navigation** - Route calculation using OSRM (no API key required)
 - **MapLibre Integration** - Open-source map rendering
 - **Location Services** - GPS tracking with Fused Location Provider

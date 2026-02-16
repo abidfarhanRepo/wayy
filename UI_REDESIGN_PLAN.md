@@ -176,9 +176,56 @@ adb push app/build/outputs/apk/debug/app-debug.apk /sdcard/Download/
 
 ---
 
+## Routing & Navigation Fixes (Option A) - COMPLETED
+
+### GPS Smoothing
+- **Problem**: GPS marker jumping and jittering
+- **Solution**: Kalman filter implementation
+- **File**: `navigation/GpsKalmanFilter.kt`
+- **Features**:
+  - Reduces noise in GPS coordinates
+  - Outlier rejection for unreasonable jumps (>50m)
+  - Minimum distance threshold (3m) for stationary
+  - Confidence scoring for each location
+
+### Map Matching
+- **Problem**: Location appearing to drive through buildings
+- **Solution**: OSRM nearest service integration
+- **File**: `navigation/MapMatcher.kt`
+- **Features**:
+  - Snaps GPS to nearest road
+  - 50m threshold (won't snap if too far)
+  - Supports path matching for sequences
+
+### Search Improvements
+- **Problem**: Search limited to Qatar only
+- **Solution**: Removed hardcoded country restriction
+- **File**: `data/repository/RouteRepository.kt`
+- **Features**:
+  - Global search capability
+  - Multiple fallback attempts (10km → 50km → 150km → global)
+  - Connected UI to actual search functionality
+  - Debounced search (300ms delay)
+
+### Visual Cleanup
+- **Problem**: Unwanted traffic congestion lines cluttering map
+- **Solution**: Removed traffic segment drawing
+- **File**: `ui/screens/MainNavigationScreen.kt`
+
+### Settings Integration
+- **File**: `data/settings/NavigationSettingsRepository.kt`
+- **Features**:
+  - GPS Smoothing toggle (default: ON)
+  - Snap to Roads toggle (default: ON)
+  - Persisted using DataStore
+
+---
+
 ## Future Enhancements
 
 - Voice navigation
 - More offline map regions
 - Real ML integration with camera
 - Custom route planning
+- Self-hosted OSRM for better reliability
+- Google Places API integration for superior search
