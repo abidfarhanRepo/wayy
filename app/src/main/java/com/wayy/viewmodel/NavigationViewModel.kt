@@ -253,6 +253,21 @@ class NavigationViewModel(
         _searchError.value = null
     }
 
+    fun resetForNewSearch() {
+        clearSearchResults()
+        _uiState.value = _uiState.value.copy(
+            currentRoute = null,
+            isNavigating = false,
+            eta = "",
+            remainingDistance = "",
+            distanceToTurn = "",
+            currentInstruction = "",
+            nextDirection = Direction.STRAIGHT,
+            isApproachingTurn = false,
+            currentStreet = ""
+        )
+    }
+
     fun addLocalPoi(name: String, category: String) {
         val location = _uiState.value.currentLocation
         if (localPoiManager == null || location == null) {

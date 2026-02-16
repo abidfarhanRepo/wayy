@@ -140,7 +140,8 @@ private const val MPS_TO_KMH = 3.6f
 fun MainNavigationScreen(
     viewModel: NavigationViewModel = viewModel(),
     onMenuClick: () -> Unit = {},
-    onSettingsClick: () -> Unit = {}
+    onSettingsClick: () -> Unit = {},
+    onSearchClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
@@ -968,7 +969,7 @@ fun MainNavigationScreen(
         QuickActionsBar(
             isNavigating = uiState.isNavigating,
             isRecording = captureStartMs != null,
-            onMenuClick = onMenuClick,
+            onSearchClick = onSearchClick,
             onNavigateToggle = { viewModel.toggleNavigation() },
             onRecordToggle = {
                 if (captureStartMs == null) {

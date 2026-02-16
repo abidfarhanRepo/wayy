@@ -13,17 +13,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.wayy.ui.components.common.AppDrawer
 import com.wayy.ui.screens.MainNavigationScreen
-import com.wayy.ui.screens.RouteOverviewScreen
+import com.wayy.ui.screens.SearchDestinationScreen
 import com.wayy.ui.screens.SettingsScreen
 import com.wayy.ui.screens.HistoryScreen
 import com.wayy.ui.screens.SavedPlacesScreen
@@ -36,10 +35,8 @@ import com.wayy.data.repository.TrafficReportManager
 import com.wayy.viewmodel.NavigationViewModel
 import com.wayy.debug.DiagnosticLogger
 import com.wayy.ml.OnDeviceMlManager
-import org.maplibre.geojson.Point
 
 class MainActivity : ComponentActivity() {
-
     private var hasLocationPermission by mutableStateOf(false)
 
     private val locationPermissionLauncher = registerForActivityResult(
@@ -47,7 +44,7 @@ class MainActivity : ComponentActivity() {
     ) { permissions ->
         hasLocationPermission = permissions.values.all { it }
         if (!hasLocationPermission) {
-            Toast.makeText(this, "Location permission required for navigation", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Location permission required", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -103,21 +100,26 @@ fun AppContent(hasPermission: Boolean, onRequestPermission: () -> Unit) {
             AppScreen.Main -> MainNavigationScreen(
                 viewModel = navigationViewModel,
                 onMenuClick = { showDrawer = true },
-                onSettingsClick = { currentScreen = AppScreen.Settings }
+                onSettingsClick = { currentScreen = AppScreen.Settings },
+                onSearchClick = {
+                    navigationViewModel.resetForNewSearch()
+                    currentScreen = AppScreen.SearchDestination
+                }
             )
-            AppScreen.RouteOverview -> RouteOverviewScreen(
-                viewModel = navigationViewModel,
-                onDestinationSelected = { destination ->
-                    navigationViewModel.startNavigation(Point.fromLngLat(destination.lon, destination.lat), destination.display_name)
-                    currentScreen = AppScreen.Main
-                },
+            AppScreen.SearchDestination -> SearchDestinationScreen(
                 onBack = { currentScreen = AppScreen.Main },
-                onRecentRouteClick = { recentRoute ->
-                    navigationViewModel.startNavigation(Point.fromLngLat(recentRoute.endLng, recentRoute.endLat), recentRoute.endName)
+                onDestinationSelected = { destination ->
+                    navigationViewModel.startNavigation(
+                        org.maplibre.geojson.Point.fromLngLat(destination.lon, destination.lat),
+                        destination.display_name
+                    )
                     currentScreen = AppScreen.Main
                 },
-                onPoiSelected = { poi ->
-                    navigationViewModel.startNavigation(Point.fromLngLat(poi.lng, poi.lat), poi.name)
+                onRecentRouteClick = { place ->
+                    navigationViewModel.startNavigation(
+                        org.maplibre.geojson.Point.fromLngLat(place.lon, place.lat),
+                        place.display_name
+                    )
                     currentScreen = AppScreen.Main
                 }
             )
@@ -126,7 +128,10 @@ fun AppContent(hasPermission: Boolean, onRequestPermission: () -> Unit) {
                 viewModel = navigationViewModel,
                 onBack = { currentScreen = AppScreen.Main },
                 onRouteClick = { route ->
-                    navigationViewModel.startNavigation(Point.fromLngLat(route.endLng, route.endLat), route.endName)
+                    navigationViewModel.startNavigation(
+                        org.maplibre.geojson.Point.fromLngLat(route.endLng, route.endLat),
+                        route.endName
+                    )
                     currentScreen = AppScreen.Main
                 }
             )
@@ -134,17 +139,24 @@ fun AppContent(hasPermission: Boolean, onRequestPermission: () -> Unit) {
                 viewModel = navigationViewModel,
                 onBack = { currentScreen = AppScreen.Main },
                 onPlaceClick = { poi ->
-                    navigationViewModel.startNavigation(Point.fromLngLat(poi.lng, poi.lat), poi.name)
+                    navigationViewModel.startNavigation(
+                        org.maplibre.geojson.Point.fromLngLat(poi.lng, poi.lat),
+                        poi.name
+                    )
                     currentScreen = AppScreen.Main
                 }
             )
+            else -> {}
         }
 
         if (showDrawer) {
             Box(modifier = Modifier.fillMaxSize().background(WayyColors.Background.copy(alpha = 0.5f)).clickable { showDrawer = false })
             Box(modifier = Modifier.fillMaxHeight().width(280.dp)) {
                 AppDrawer(
-                    onNavigateToRouteOverview = { currentScreen = AppScreen.RouteOverview },
+                    onNavigateToRouteOverview = {
+                        navigationViewModel.resetForNewSearch()
+                        currentScreen = AppScreen.SearchDestination
+                    },
                     onNavigateToSettings = { currentScreen = AppScreen.Settings },
                     onNavigateToHistory = { currentScreen = AppScreen.History },
                     onNavigateToSavedPlaces = { currentScreen = AppScreen.SavedPlaces },
@@ -157,7 +169,7 @@ fun AppContent(hasPermission: Boolean, onRequestPermission: () -> Unit) {
 
 sealed class AppScreen {
     object Main : AppScreen()
-    object RouteOverview : AppScreen()
+    object SearchDestination : AppScreen()
     object Settings : AppScreen()
     object History : AppScreen()
     object SavedPlaces : AppScreen()

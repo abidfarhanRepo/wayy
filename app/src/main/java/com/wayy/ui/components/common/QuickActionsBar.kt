@@ -1,20 +1,11 @@
 package com.wayy.ui.components.common
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,7 +22,7 @@ import com.wayy.ui.theme.WayyColors
 fun QuickActionsBar(
     isNavigating: Boolean = false,
     isRecording: Boolean = false,
-    onMenuClick: () -> Unit = {},
+    onSearchClick: () -> Unit = {},
     onNavigateToggle: () -> Unit = {},
     onRecordToggle: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -40,42 +31,44 @@ fun QuickActionsBar(
         modifier = modifier
             .fillMaxWidth()
             .background(WayyColors.Surface)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            ActionButton(
+            QuickActionButton(
                 icon = Icons.Default.Search,
                 label = "Search",
-                onClick = onMenuClick,
-                active = false
+                onClick = onSearchClick,
+                isPrimary = true
             )
 
             if (isNavigating) {
-                ActionButton(
-                    icon = if (isRecording) Icons.Default.Videocam else Icons.Default.Videocam,
-                    label = if (isRecording) "Stop" else "Record",
+                QuickActionButton(
+                    icon = if (isRecording) Icons.Default.Stop else Icons.Default.FiberManualRecord,
+                    label = if (isRecording) "Stop Rec" else "Record",
                     onClick = onRecordToggle,
-                    active = isRecording,
+                    isPrimary = false,
+                    isActive = isRecording,
                     activeColor = WayyColors.Error
                 )
 
-                ActionButton(
+                QuickActionButton(
                     icon = Icons.Default.Close,
-                    label = "Stop",
+                    label = "Stop Nav",
                     onClick = onNavigateToggle,
-                    active = true,
+                    isPrimary = false,
+                    isActive = true,
                     activeColor = WayyColors.Error
                 )
             } else {
-                ActionButton(
-                    icon = Icons.Default.Explore,
+                QuickActionButton(
+                    icon = Icons.Default.Navigation,
                     label = "Navigate",
                     onClick = onNavigateToggle,
-                    active = false
+                    isPrimary = true
                 )
             }
         }
@@ -83,36 +76,46 @@ fun QuickActionsBar(
 }
 
 @Composable
-private fun ActionButton(
+private fun QuickActionButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     onClick: () -> Unit,
-    active: Boolean,
+    isPrimary: Boolean = false,
+    isActive: Boolean = false,
     activeColor: Color = WayyColors.Accent
 ) {
-    androidx.compose.material3.Button(
-        onClick = onClick,
-        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-            containerColor = if (active) activeColor else Color.Transparent,
-            contentColor = if (active) Color.White else WayyColors.Primary
-        ),
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.height(48.dp)
+    val backgroundColor = when {
+        isActive -> activeColor
+        isPrimary -> WayyColors.SurfaceVariant
+        else -> Color.Transparent
+    }
+    
+    val contentColor = when {
+        isActive -> Color.White
+        isPrimary -> WayyColors.Primary
+        else -> WayyColors.PrimaryMuted
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(backgroundColor)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                modifier = Modifier.size(20.dp)
-            )
-            Text(
-                text = label,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = contentColor,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = label,
+            color = contentColor,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
