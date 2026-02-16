@@ -28,28 +28,49 @@ class RouteRepository {
     private val gson = Gson()
 
     companion object {
+        private const val TAG = "RouteRepository"
         private const val OSRM_BASE_URL = "https://router.project-osrm.org/route/v1/driving"
         private const val NOMINATIM_BASE_URL = "https://nominatim.openstreetmap.org/search"
         private const val PHOTON_BASE_URL = "https://photon.komoot.io/api"
         private const val USER_AGENT = "WayyApp/1.0 (contact@wayy.app)"
+        
+        // Performance tracking
+        private var totalRouteRequests = 0
+        private var successfulRouteRequests = 0
+        private var failedRouteRequests = 0
+        private var totalSearchRequests = 0
+        private var successfulSearchRequests = 0
     }
 
     suspend fun getRoute(
         start: Point,
         end: Point
     ): Result<Route> = withContext(Dispatchers.IO) {
+        totalRouteRequests++
+        val startTime = System.currentTimeMillis()
+        
+        Log.d(TAG, "[ROUTE_START] Request #$totalRouteRequests")
+        Log.d(TAG, "[ROUTE_INPUT] Start: (${start.latitude()}, ${start.longitude()})")
+        Log.d(TAG, "[ROUTE_INPUT] End: (${end.latitude()}, ${end.longitude()})")
+        
         try {
             val url = "$OSRM_BASE_URL/${start.longitude()},${start.latitude()};${end.longitude()},${end.latitude()}?overview=full&geometries=polyline&steps=true"
-            Log.d("WayyRoute", "Requesting route: $url")
+            Log.v(TAG, "[ROUTE_REQUEST] URL: $url")
 
             val request = Request.Builder()
                 .url(url)
                 .build()
 
+            Log.d(TAG, "[ROUTE_NETWORK] Sending request to OSRM...")
             val response = client.newCall(request).execute()
+            val networkTime = System.currentTimeMillis() - startTime
+            
+            Log.v(TAG, "[ROUTE_RESPONSE] HTTP ${response.code}, took ${networkTime}ms")
 
             if (!response.isSuccessful) {
-                Log.w("WayyRoute", "OSRM request failed: ${response.code}")
+                failedRouteRequests++
+                Log.e(TAG, "[ROUTE_ERROR] HTTP error ${response.code}: ${response.message}")
+                logRouteStats()
                 return@withContext Result.failure(
                     IOException("OSRM request failed: ${response.code}")
                 )
@@ -57,95 +78,184 @@ class RouteRepository {
 
             val body = response.body?.string()
             if (body.isNullOrBlank()) {
-                Log.w("WayyRoute", "OSRM empty response")
+                failedRouteRequests++
+                Log.e(TAG, "[ROUTE_ERROR] Empty response body")
+                logRouteStats()
                 return@withContext Result.failure(
                     IOException("Empty response from OSRM")
                 )
             }
 
+            Log.v(TAG, "[ROUTE_PARSE] Response size: ${body.length} chars")
+            
             val osrmResponse = gson.fromJson(body, OSRMResponse::class.java)
+            
+            Log.v(TAG, "[ROUTE_PARSE] OSRM code: ${osrmResponse.code}, routes: ${osrmResponse.routes.size}")
 
             if (osrmResponse.code != "Ok" || osrmResponse.routes.isEmpty()) {
-                Log.w("WayyRoute", "OSRM no route found: ${osrmResponse.code}")
+                failedRouteRequests++
+                Log.e(TAG, "[ROUTE_ERROR] OSRM error: code=${osrmResponse.code}, routes=${osrmResponse.routes.size}")
+                logRouteStats()
                 return@withContext Result.failure(
-                    IOException("No route found")
+                    IOException("No route found: ${osrmResponse.code}")
                 )
             }
 
             val osrmRoute = osrmResponse.routes.first()
+            Log.d(TAG, "[ROUTE_SUCCESS] Route found: distance=${osrmRoute.distance}m, duration=${osrmRoute.duration}s")
+            Log.v(TAG, "[ROUTE_SUCCESS] Legs: ${osrmRoute.legs.size}, Steps: ${osrmRoute.legs.sumOf { it.steps.size }}")
+            
             val route = osrmRoute.toRoute()
+            val totalTime = System.currentTimeMillis() - startTime
+            
+            successfulRouteRequests++
+            Log.d(TAG, "[ROUTE_SUCCESS] Total time: ${totalTime}ms (network: ${networkTime}ms)")
+            logRouteStats()
 
             Result.success(route)
         } catch (e: Exception) {
-            Log.e("WayyRoute", "OSRM request error", e)
+            failedRouteRequests++
+            val totalTime = System.currentTimeMillis() - startTime
+            Log.e(TAG, "[ROUTE_EXCEPTION] Error after ${totalTime}ms: ${e.javaClass.simpleName} - ${e.message}")
+            Log.e(TAG, "[ROUTE_EXCEPTION] Stack trace:", e)
+            logRouteStats()
             Result.failure(e)
         }
+    }
+    
+    private fun logRouteStats() {
+        val successRate = if (totalRouteRequests > 0) (successfulRouteRequests * 100 / totalRouteRequests) else 0
+        Log.d(TAG, "[ROUTE_STATS] Total: $totalRouteRequests, Success: $successfulRouteRequests, Failed: $failedRouteRequests ($successRate%)")
     }
 
     suspend fun searchPlaces(query: String, location: Point? = null): Result<List<PlaceResult>> =
         withContext(Dispatchers.IO) {
+            totalSearchRequests++
+            val startTime = System.currentTimeMillis()
+            
+            Log.d(TAG, "[SEARCH_START] Query: '$query', Location: ${location?.let { "(${it.latitude()}, ${it.longitude()})" } ?: "none"}")
+            
             try {
                 val attempts = buildSearchAttempts(location)
-                for (attempt in attempts) {
-                    val result = searchPlacesNominatim(query, attempt)
+                Log.v(TAG, "[SEARCH_STRATEGY] Will try ${attempts.size} search attempts")
+                
+                for ((index, attempt) in attempts.withIndex()) {
+                    Log.d(TAG, "[SEARCH_ATTEMPT_${index + 1}] radius=${attempt.radiusKm}km, bounded=${attempt.bounded}, country=${attempt.countryCode ?: "any"}")
+                    
+                    val result = searchPlacesNominatim(query, attempt, index + 1)
                     if (result.isSuccess) {
                         val places = result.getOrNull().orEmpty()
                         if (places.isNotEmpty()) {
+                            val totalTime = System.currentTimeMillis() - startTime
+                            Log.d(TAG, "[SEARCH_SUCCESS] Found ${places.size} results in attempt #${index + 1}, took ${totalTime}ms")
+                            
                             val sorted = sortByDistance(places, location)
+                            successfulSearchRequests++
+                            logSearchStats()
                             return@withContext Result.success(sorted)
+                        } else {
+                            Log.v(TAG, "[SEARCH_ATTEMPT_${index + 1}] No results")
                         }
+                    } else {
+                        Log.v(TAG, "[SEARCH_ATTEMPT_${index + 1}] Failed: ${result.exceptionOrNull()?.message}")
                     }
                 }
+                
+                Log.d(TAG, "[SEARCH_FALLBACK] Trying Photon fallback...")
                 val fallback = searchPlacesPhoton(query, location)
                 if (fallback.isSuccess) {
-                    val places = sortByDistance(fallback.getOrNull().orEmpty(), location)
+                    val places = fallback.getOrNull().orEmpty()
+                    val totalTime = System.currentTimeMillis() - startTime
+                    
+                    if (places.isNotEmpty()) {
+                        Log.d(TAG, "[SEARCH_FALLBACK_SUCCESS] Found ${places.size} results via Photon, took ${totalTime}ms")
+                        successfulSearchRequests++
+                    } else {
+                        Log.w(TAG, "[SEARCH_FALLBACK_EMPTY] No results from Photon either")
+                    }
+                    
+                    logSearchStats()
                     return@withContext Result.success(places)
                 }
+                
+                val totalTime = System.currentTimeMillis() - startTime
+                Log.w(TAG, "[SEARCH_FAILED] All attempts failed after ${totalTime}ms")
+                logSearchStats()
                 fallback
             } catch (e: Exception) {
-                Log.e("WayySearch", "Geocoding error", e)
+                val totalTime = System.currentTimeMillis() - startTime
+                Log.e(TAG, "[SEARCH_EXCEPTION] Error after ${totalTime}ms: ${e.javaClass.simpleName} - ${e.message}")
+                Log.e(TAG, "[SEARCH_EXCEPTION] Stack trace:", e)
+                logSearchStats()
                 Result.failure(e)
             }
         }
+    
+    private fun logSearchStats() {
+        val successRate = if (totalSearchRequests > 0) (successfulSearchRequests * 100 / totalSearchRequests) else 0
+        Log.d(TAG, "[SEARCH_STATS] Total: $totalSearchRequests, Success: $successfulSearchRequests ($successRate%)")
+    }
 
     private fun shouldFallback(code: Int): Boolean {
         return code == 429 || code == 503 || code == 509 || code == 403
     }
 
     private fun searchPlacesPhoton(query: String, location: Point?): Result<List<PlaceResult>> {
+        Log.d(TAG, "[SEARCH_PHOTON] Starting Photon fallback search")
+        
         return try {
             val locationBias = location?.let {
                 "&lat=${it.latitude()}&lon=${it.longitude()}"
             }.orEmpty()
             val url = "$PHOTON_BASE_URL?q=${URLEncoder.encode(query, "UTF-8")}&limit=10$locationBias"
-            Log.d("WayySearch", "Photon fallback: $url")
+            Log.v(TAG, "[SEARCH_PHOTON] URL: $url")
+            
             val request = Request.Builder()
                 .url(url)
                 .addHeader("User-Agent", USER_AGENT)
                 .addHeader("Accept-Language", Locale.getDefault().toLanguageTag())
                 .build()
 
+            Log.v(TAG, "[SEARCH_PHOTON] Sending request...")
             val response = client.newCall(request).execute()
+            
             response.use { resp ->
+                Log.v(TAG, "[SEARCH_PHOTON] HTTP ${resp.code}")
+                
                 if (!resp.isSuccessful) {
-                    Log.w("WayySearch", "Photon failed: ${resp.code}")
+                    Log.w(TAG, "[SEARCH_PHOTON] HTTP error ${resp.code}: ${resp.message}")
                     return Result.failure(IOException("Geocoding fallback failed: ${resp.code}"))
                 }
+                
                 val body = resp.body?.string()
                 if (body.isNullOrBlank()) {
+                    Log.w(TAG, "[SEARCH_PHOTON] Empty response body")
                     return Result.failure(IOException("Empty fallback response"))
                 }
+                
+                Log.v(TAG, "[SEARCH_PHOTON] Response size: ${body.length} chars")
+                
                 val photon = gson.fromJson(body, PhotonResponse::class.java)
+                Log.v(TAG, "[SEARCH_PHOTON] Parsed ${photon.features.size} features")
+                
                 val places = photon.features.mapNotNull { it.toPlaceResult() }
+                Log.d(TAG, "[SEARCH_PHOTON] Successfully converted ${places.size} results")
+                
+                // Log first few results for debugging
+                places.take(3).forEachIndexed { index, place ->
+                    Log.v(TAG, "[SEARCH_PHOTON] Result ${index + 1}: ${place.display_name}")
+                }
+                
                 Result.success(places)
             }
         } catch (e: Exception) {
-            Log.e("WayySearch", "Photon error", e)
+            Log.e(TAG, "[SEARCH_PHOTON_EXCEPTION] ${e.javaClass.simpleName}: ${e.message}")
+            Log.e(TAG, "[SEARCH_PHOTON_EXCEPTION] Stack trace:", e)
             Result.failure(e)
         }
     }
 
-    private fun searchPlacesNominatim(query: String, attempt: SearchAttempt): Result<List<PlaceResult>> {
+    private fun searchPlacesNominatim(query: String, attempt: SearchAttempt, attemptNumber: Int): Result<List<PlaceResult>> {
         val location = attempt.location
         val encoded = URLEncoder.encode(query, "UTF-8")
         val base = StringBuilder("$NOMINATIM_BASE_URL?q=$encoded&format=json&limit=10&addressdetails=1")
@@ -161,7 +271,7 @@ class RouteRepository {
         }
         base.append("&email=contact@wayy.app")
         val url = base.toString()
-        Log.d("WayySearch", "Searching: $url")
+        Log.v(TAG, "[SEARCH_NOMINATIM_$attemptNumber] URL: $url")
 
         val request = Request.Builder()
             .url(url)
@@ -171,8 +281,10 @@ class RouteRepository {
 
         val response = client.newCall(request).execute()
         response.use { resp ->
+            Log.v(TAG, "[SEARCH_NOMINATIM_$attemptNumber] HTTP ${resp.code}")
+            
             if (!resp.isSuccessful) {
-                Log.w("WayySearch", "Geocoding failed: ${resp.code}")
+                Log.w(TAG, "[SEARCH_NOMINATIM_$attemptNumber] HTTP error ${resp.code}: ${resp.message}")
                 if (shouldFallback(resp.code)) {
                     return Result.failure(IOException("Geocoding rate limited: ${resp.code}"))
                 }
@@ -180,10 +292,20 @@ class RouteRepository {
             }
             val body = resp.body?.string()
             if (body.isNullOrBlank()) {
+                Log.w(TAG, "[SEARCH_NOMINATIM_$attemptNumber] Empty response")
                 return Result.failure(IOException("Empty geocoding response"))
             }
+            
+            Log.v(TAG, "[SEARCH_NOMINATIM_$attemptNumber] Response size: ${body.length} chars")
+            
             val places = gson.fromJson(body, Array<PlaceResult>::class.java).toList()
-            Log.d("WayySearch", "Geocoding results: ${places.size}")
+            Log.d(TAG, "[SEARCH_NOMINATIM_$attemptNumber] Found ${places.size} results")
+            
+            // Log first few results for debugging
+            places.take(3).forEachIndexed { index, place ->
+                Log.v(TAG, "[SEARCH_NOMINATIM_$attemptNumber] Result ${index + 1}: ${place.display_name}")
+            }
+            
             return Result.success(places)
         }
     }

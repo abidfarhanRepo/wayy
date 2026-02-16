@@ -53,10 +53,11 @@ class GpsKalmanFilter {
         accuracy: Float,
         speedMps: Float
     ): FilteredLocation? {
+        Log.v(TAG, "[KALMAN_INPUT] lat=$lat, lon=$lon, accuracy=${accuracy}m, speed=${speedMps}m/s")
         
         // Skip updates with poor accuracy
         if (accuracy > 50f) {
-            Log.d(TAG, "Skipping update due to poor accuracy: ${accuracy}m")
+            Log.d(TAG, "[KALMAN_SKIP] Poor accuracy: ${accuracy}m (threshold: 50m)")
             return lastLat?.let { FilteredLocation(it, lastLon!!, false, 0.3f) }
         }
         
@@ -66,14 +67,20 @@ class GpsKalmanFilter {
             
             // Reject large jumps unless moving fast
             if (distance > MAX_JUMP_METERS && speedMps < 15f) {
-                Log.w(TAG, "Rejecting large jump: ${distance}m (speed: ${speedMps}m/s)")
+                Log.w(TAG, "[KALMAN_REJECT] Large jump: ${distance}m > ${MAX_JUMP_METERS}m (speed: ${speedMps}m/s < 15m/s)")
+                Log.d(TAG, "[KALMAN_REJECT] Using last known: lat=$lastLat, lon=$lastLon")
                 return FilteredLocation(lastLat!!, lastLon!!, false, 0.2f)
             }
             
             // Skip small movements (reduces noise when stationary)
             if (distance < MIN_DISTANCE_METERS && speedMps < 1f) {
+                Log.v(TAG, "[KALMAN_SKIP] Small movement: ${distance}m < ${MIN_DISTANCE_METERS}m (speed: ${speedMps}m/s < 1m/s)")
                 return FilteredLocation(lastLat!!, lastLon!!, true, 0.9f)
             }
+            
+            Log.v(TAG, "[KALMAN_DISTANCE] Distance from last: ${distance}m")
+        } else {
+            Log.d(TAG, "[KALMAN_INIT] First measurement, initializing filter")
         }
         
         // Measurement noise based on accuracy (R)
@@ -82,9 +89,15 @@ class GpsKalmanFilter {
         // Process noise based on speed (faster movement = more process noise)
         val processNoise = DEFAULT_PROCESS_NOISE * (1.0 + speedMps * 0.1)
         
+        Log.v(TAG, "[KALMAN_PARAMS] measurementNoise=$measurementNoise, processNoise=$processNoise")
+        
         // Apply Kalman filter to latitude and longitude independently
         val filteredLat = applyKalmanFilter(latState, lat, measurementNoise, processNoise)
         val filteredLon = applyKalmanFilter(lonState, lon, measurementNoise, processNoise)
+        
+        // Calculate shifts
+        val latShift = kotlin.math.abs(filteredLat - lat)
+        val lonShift = kotlin.math.abs(filteredLon - lon)
         
         // Update last location
         lastLat = filteredLat
@@ -93,7 +106,9 @@ class GpsKalmanFilter {
         // Calculate confidence based on filter error
         val confidence = calculateConfidence(latState.error, lonState.error, accuracy)
         
-        Log.d(TAG, "Filtered: ($lat, $lon) -> ($filteredLat, $filteredLon), confidence=$confidence")
+        Log.d(TAG, "[KALMAN_OUTPUT] Original: ($lat, $lon) -> Filtered: ($filteredLat, $filteredLon)")
+        Log.d(TAG, "[KALMAN_OUTPUT] Shift: lat=${latShift}°, lon=${lonShift}°, confidence=$confidence")
+        Log.v(TAG, "[KALMAN_STATE] latError=${latState.error}, lonError=${lonState.error}")
         
         return FilteredLocation(
             latitude = filteredLat,
