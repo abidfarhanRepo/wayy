@@ -98,7 +98,7 @@ fun TurnArrowOverlay(
         Icon(
             imageVector = arrowIcon,
             contentDescription = "Turn direction",
-            tint = WayyColors.Accent.copy(alpha = pulseAlpha),
+            tint = WayyColors.PrimaryLime.copy(alpha = pulseAlpha),
             modifier = Modifier
                 .size(64.dp)
                 .rotate(arrowRotation)

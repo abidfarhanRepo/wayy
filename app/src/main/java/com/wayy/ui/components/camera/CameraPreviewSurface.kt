@@ -5,10 +5,6 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.video.Recorder
-import androidx.camera.video.VideoCapture
-import androidx.camera.video.Quality
-import androidx.camera.video.QualitySelector
 import androidx.camera.view.PreviewView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,7 +20,6 @@ import java.util.concurrent.Executors
 fun CameraPreviewSurface(
     modifier: Modifier = Modifier,
     onError: (String) -> Unit = {},
-    onVideoCaptureReady: ((VideoCapture<Recorder>) -> Unit)? = null,
     frameAnalyzer: ImageAnalysis.Analyzer? = null
 ) {
     val context = LocalContext.current
@@ -41,10 +36,6 @@ fun CameraPreviewSurface(
                 val preview = Preview.Builder().build().also {
                     it.setSurfaceProvider(previewView.surfaceProvider)
                 }
-                val recorder = Recorder.Builder()
-                    .setQualitySelector(QualitySelector.from(Quality.HD))
-                    .build()
-                val videoCapture = VideoCapture.withOutput(recorder)
                 val analysis = frameAnalyzer?.let {
                     ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -58,11 +49,10 @@ fun CameraPreviewSurface(
                 try {
                     cameraProvider.unbindAll()
                     if (analysis != null) {
-                        cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, videoCapture, analysis)
+                        cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, analysis)
                     } else {
-                        cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, videoCapture)
+                        cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
                     }
-                    onVideoCaptureReady?.invoke(videoCapture)
                 } catch (e: Exception) {
                     Log.e("WayyCamera", "Camera bind failed", e)
                     onError("Camera failed to start")
@@ -85,7 +75,6 @@ fun CameraPreviewSurface(
 @Composable
 fun HiddenCameraForML(
     onError: (String) -> Unit = {},
-    onVideoCaptureReady: ((VideoCapture<Recorder>) -> Unit)? = null,
     frameAnalyzer: ImageAnalysis.Analyzer? = null
 ) {
     val context = LocalContext.current
@@ -98,10 +87,6 @@ fun HiddenCameraForML(
         cameraProviderFuture.addListener(
             {
                 val cameraProvider = cameraProviderFuture.get()
-                val recorder = Recorder.Builder()
-                    .setQualitySelector(QualitySelector.from(Quality.HD))
-                    .build()
-                val videoCapture = VideoCapture.withOutput(recorder)
                 val analysis = frameAnalyzer?.let {
                     ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -115,11 +100,8 @@ fun HiddenCameraForML(
                 try {
                     cameraProvider.unbindAll()
                     if (analysis != null) {
-                        cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, videoCapture, analysis)
-                    } else {
-                        cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, videoCapture)
+                        cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, analysis)
                     }
-                    onVideoCaptureReady?.invoke(videoCapture)
                     Log.d("WayyCamera", "Hidden camera for ML initialized")
                 } catch (e: Exception) {
                     Log.e("WayyCamera", "Hidden camera bind failed", e)

@@ -22,7 +22,7 @@ The primary map view with navigation controls.
 - Map view (full screen)
 - Top bar with GPS indicator
 - Speed display (horizontal bar)
-- Quick action buttons (Search, Navigate, Record)
+- Quick action buttons (Search, Navigate)
 
 ### 2. Search Destination Screen
 Clean search interface for finding destinations.
@@ -48,7 +48,7 @@ App configuration options.
 **Sections:**
 - Map settings (TileJSON, Map Style URL)
 - Navigation settings (Voice, Speed alerts, Camera alerts)
-- ML & Recording (Detection model, Lane model)
+- ML preferences (Detection model, Lane model)
 - About
 
 ### 5. History Screen
@@ -132,7 +132,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 - `INTERNET` - Map tiles and routing
 - `ACCESS_FINE_LOCATION` - GPS tracking
 - `ACCESS_COARSE_LOCATION` - Network location
-- `CAMERA` - AR mode (optional)
+- `CAMERA` - ML frame analysis (optional)
 
 ## Offline Maps
 

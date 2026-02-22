@@ -46,15 +46,25 @@ class RouteRepository {
         start: Point,
         end: Point
     ): Result<Route> = withContext(Dispatchers.IO) {
+        val result = getRouteWithAlternatives(start, end, alternatives = false)
+        return@withContext result.map { it.first() }
+    }
+    
+    suspend fun getRouteWithAlternatives(
+        start: Point,
+        end: Point,
+        alternatives: Boolean = true
+    ): Result<List<Route>> = withContext(Dispatchers.IO) {
         totalRouteRequests++
         val startTime = System.currentTimeMillis()
         
-        Log.d(TAG, "[ROUTE_START] Request #$totalRouteRequests")
+        Log.d(TAG, "[ROUTE_START] Request #$totalRouteRequests (alternatives=$alternatives)")
         Log.d(TAG, "[ROUTE_INPUT] Start: (${start.latitude()}, ${start.longitude()})")
         Log.d(TAG, "[ROUTE_INPUT] End: (${end.latitude()}, ${end.longitude()})")
         
         try {
-            val url = "$OSRM_BASE_URL/${start.longitude()},${start.latitude()};${end.longitude()},${end.latitude()}?overview=full&geometries=polyline&steps=true"
+            val alternativesParam = if (alternatives) "&alternatives=true" else ""
+            val url = "$OSRM_BASE_URL/${start.longitude()},${start.latitude()};${end.longitude()},${end.latitude()}?overview=full&geometries=polyline&steps=true$alternativesParam"
             Log.v(TAG, "[ROUTE_REQUEST] URL: $url")
 
             val request = Request.Builder()
@@ -101,18 +111,20 @@ class RouteRepository {
                 )
             }
 
-            val osrmRoute = osrmResponse.routes.first()
-            Log.d(TAG, "[ROUTE_SUCCESS] Route found: distance=${osrmRoute.distance}m, duration=${osrmRoute.duration}s")
-            Log.v(TAG, "[ROUTE_SUCCESS] Legs: ${osrmRoute.legs.size}, Steps: ${osrmRoute.legs.sumOf { it.steps.size }}")
+            val routes = osrmResponse.routes.map { it.toRoute() }
+            Log.d(TAG, "[ROUTE_SUCCESS] Found ${routes.size} routes")
+            routes.firstOrNull()?.let { firstRoute ->
+                Log.d(TAG, "[ROUTE_SUCCESS] Primary route: distance=${firstRoute.distance}m, duration=${firstRoute.duration}s")
+                Log.v(TAG, "[ROUTE_SUCCESS] Legs: ${firstRoute.legs.size}, Steps: ${firstRoute.legs.sumOf { it.steps.size }}")
+            }
             
-            val route = osrmRoute.toRoute()
             val totalTime = System.currentTimeMillis() - startTime
             
             successfulRouteRequests++
             Log.d(TAG, "[ROUTE_SUCCESS] Total time: ${totalTime}ms (network: ${networkTime}ms)")
             logRouteStats()
 
-            Result.success(route)
+            Result.success(routes)
         } catch (e: Exception) {
             failedRouteRequests++
             val totalTime = System.currentTimeMillis() - startTime

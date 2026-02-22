@@ -27,10 +27,9 @@ import com.wayy.ui.theme.WayyColors
 @Composable
 fun QuickActionsBar(
     isNavigating: Boolean = false,
-    isRecording: Boolean = false,
+    onMenuClick: () -> Unit = {},
     onSearchClick: () -> Unit = {},
     onNavigateToggle: () -> Unit = {},
-    onRecordToggle: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -53,15 +52,6 @@ fun QuickActionsBar(
             )
 
             if (isNavigating) {
-                ActionButton(
-                    icon = if (isRecording) Icons.Default.Stop else Icons.Default.FiberManualRecord,
-                    label = if (isRecording) "Stop" else "Record",
-                    onClick = onRecordToggle,
-                    isPrimary = false,
-                    isActive = isRecording,
-                    activeColor = WayyColors.Error
-                )
-
                 ActionButton(
                     icon = Icons.Default.Close,
                     label = "Stop Nav",

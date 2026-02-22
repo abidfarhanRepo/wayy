@@ -30,7 +30,6 @@ fun CameraPreviewCard(
     isApproaching: Boolean,
     showGuidance: Boolean = true,
     hasCameraPermission: Boolean,
-    onVideoCaptureReady: ((androidx.camera.video.VideoCapture<androidx.camera.video.Recorder>) -> Unit)? = null,
     frameAnalyzer: androidx.camera.core.ImageAnalysis.Analyzer? = null,
     modifier: Modifier = Modifier
 ) {
@@ -41,7 +40,6 @@ fun CameraPreviewCard(
         Box(modifier = Modifier.fillMaxSize()) {
             if (hasCameraPermission) {
                 HiddenCameraForML(
-                    onVideoCaptureReady = onVideoCaptureReady,
                     frameAnalyzer = frameAnalyzer
                 )
             } else {
@@ -49,7 +47,7 @@ fun CameraPreviewCard(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
-                            color = WayyColors.Surface.copy(alpha = 0.8f),
+                            color = WayyColors.BgSecondary.copy(alpha = 0.8f),
                             shape = RoundedCornerShape(20.dp)
                         )
                         .padding(12.dp),

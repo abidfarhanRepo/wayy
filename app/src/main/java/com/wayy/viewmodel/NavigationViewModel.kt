@@ -77,8 +77,7 @@ data class NavigationUiState(
     val error: String? = null,
     val isOffRoute: Boolean = false,
     val isApproachingTurn: Boolean = false,
-    val lastAnnouncedDistance: Double? = null,
-    val isCaptureEnabled: Boolean = true
+    val lastAnnouncedDistance: Double? = null
 )
 
 class NavigationViewModel(
@@ -251,21 +250,6 @@ class NavigationViewModel(
         _searchResults.value = emptyList()
         _isSearching.value = false
         _searchError.value = null
-    }
-
-    fun resetForNewSearch() {
-        clearSearchResults()
-        _uiState.value = _uiState.value.copy(
-            currentRoute = null,
-            isNavigating = false,
-            eta = "",
-            remainingDistance = "",
-            distanceToTurn = "",
-            currentInstruction = "",
-            nextDirection = Direction.STRAIGHT,
-            isApproachingTurn = false,
-            currentStreet = ""
-        )
     }
 
     fun addLocalPoi(name: String, category: String) {

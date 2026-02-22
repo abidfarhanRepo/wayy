@@ -67,7 +67,6 @@ import com.wayy.BuildConfig
 import com.wayy.data.repository.RouteHistoryItem
 import com.wayy.data.repository.LocalPoiItem
 import com.wayy.data.repository.PlaceResult
-import com.wayy.capture.CaptureStorageManager
 import com.wayy.data.settings.MlSettings
 import com.wayy.data.settings.MlSettingsRepository
 import com.wayy.data.settings.DEFAULT_MODEL_PATH
@@ -75,7 +74,6 @@ import com.wayy.data.settings.DEFAULT_LANE_MODEL_PATH
 import com.wayy.data.settings.MapSettings
 import com.wayy.data.settings.MapSettingsRepository
 import com.wayy.debug.DiagnosticLogger
-import com.wayy.debug.ExportBundleManager
 import com.wayy.map.OfflineMapManager
 import com.wayy.map.OfflineSummary
 import com.wayy.ui.components.glass.GlassCard
@@ -117,9 +115,7 @@ fun RouteOverviewScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
-    val exportManager = remember { ExportBundleManager(context, DiagnosticLogger(context)) }
     val offlineMapManager = remember { OfflineMapManager(context, DiagnosticLogger(context)) }
-    val captureStorageManager = remember { CaptureStorageManager(context) }
     val mapSettingsRepository = remember { MapSettingsRepository(context) }
     val mapSettings by mapSettingsRepository.settingsFlow.collectAsState(initial = MapSettings())
     val mlSettingsRepository = remember { MlSettingsRepository(context) }
@@ -129,7 +125,6 @@ fun RouteOverviewScreen(
     var tilejsonInput by remember { mutableStateOf("") }
     var styleUrlInput by remember { mutableStateOf("") }
     var pendingDeletePoi by remember { mutableStateOf<LocalPoiItem?>(null) }
-    var captureEntries by remember { mutableStateOf<List<CaptureEntry>>(emptyList()) }
     val exeedModelPath = "file://${context.filesDir}/models/exeed_model.tflite"
     val customLaneModelPath = "file://${context.filesDir}/models/lane_model.tflite"
     val showSearchResults = searchQuery.trim().length >= 3
@@ -170,16 +165,6 @@ fun RouteOverviewScreen(
     LaunchedEffect(Unit) {
         offlineMapManager.loadSummary { summary ->
             offlineSummary = summary
-        }
-    }
-
-    LaunchedEffect(activeTab) {
-        if (activeTab == RouteOverviewTab.CAPTURES) {
-            captureEntries = try {
-                loadCaptureEntries(captureStorageManager)
-            } catch (e: Exception) {
-                emptyList()
-            }
         }
     }
 
@@ -256,11 +241,6 @@ fun RouteOverviewScreen(
                     selected = activeTab == RouteOverviewTab.SETTINGS,
                     onClick = { activeTab = RouteOverviewTab.SETTINGS },
                     label = { Text("Settings") }
-                )
-                FilterChip(
-                    selected = activeTab == RouteOverviewTab.CAPTURES,
-                    onClick = { activeTab = RouteOverviewTab.CAPTURES },
-                    label = { Text("Captures") }
                 )
             }
 
@@ -594,71 +574,7 @@ fun RouteOverviewScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = "Export Capture + Logs",
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(
-                                onClick = {
-                                    coroutineScope.launch {
-                                        val exportFile = exportManager.createExportBundle()
-                                        if (exportFile == null) {
-                                            snackbarHostState.showSnackbar("Nothing to export yet")
-                                            return@launch
-                                        }
-                                        val uri = FileProvider.getUriForFile(
-                                            context,
-                                            "${context.packageName}.fileprovider",
-                                            exportFile
-                                        )
-                                        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                            type = "application/zip"
-                                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        }
-                                        context.startActivity(
-                                            android.content.Intent.createChooser(shareIntent, "Share Wayy export")
-                                        )
-                                    }
-                                }
-                            ) {
-                                Text("Export Bundle")
-                            }
-                        }
-                    }
-
                     Spacer(modifier = Modifier.height(24.dp))
-                }
-            }
-
-            if (activeTab == RouteOverviewTab.CAPTURES) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    if (captureEntries.isEmpty()) {
-                        item {
-                            Text(
-                                text = "No recordings yet",
-                                color = WayyColors.PrimaryMuted,
-                                fontSize = 13.sp
-                            )
-                        }
-                    } else {
-                        items(captureEntries) { entry ->
-                            CaptureCard(entry)
-                        }
-                    }
                 }
             }
 
@@ -1006,80 +922,10 @@ private data class PoiDistance(
     val distanceMeters: Double?
 )
 
-private data class CaptureEntry(
-    val name: String,
-    val timestampLabel: String,
-    val sizeBytes: Long
-)
-
-@Composable
-private fun CaptureCard(entry: CaptureEntry) {
-    GlassCard(modifier = Modifier.fillMaxWidth(0.9f)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = entry.name,
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = entry.timestampLabel,
-                    color = WayyColors.PrimaryMuted,
-                    fontSize = 12.sp
-                )
-            }
-            Text(
-                text = formatBytes(entry.sizeBytes),
-                color = WayyColors.AccentLight,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
-    }
-}
-
-private fun loadCaptureEntries(storageManager: CaptureStorageManager): List<CaptureEntry> {
-    val dir = storageManager.getCaptureDir()
-    if (!dir.exists()) return emptyList()
-    val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
-    return dir.listFiles()
-        ?.filter { it.isFile && it.name.startsWith("nav_capture_") && it.extension == "mp4" }
-        ?.sortedByDescending { it.lastModified() }
-        ?.map { file ->
-            val stamp = captureStampFromName(file.name)
-            val timestamp = stamp?.let { parseCaptureStamp(it) }
-            CaptureEntry(
-                name = "Recording",
-                timestampLabel = timestamp?.let { formatter.format(it) } ?: file.name,
-                sizeBytes = file.length()
-            )
-        }
-        ?: emptyList()
-}
-
-private fun captureStampFromName(name: String): String? {
-    val match = Regex("nav_capture_(\\d{8}_\\d{6})\\.mp4").find(name)
-    return match?.groupValues?.get(1)
-}
-
-private fun parseCaptureStamp(stamp: String): Date? {
-    return runCatching {
-        SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).parse(stamp)
-    }.getOrNull()
-}
-
 private enum class RouteOverviewTab {
     SEARCH,
     POIS,
-    SETTINGS,
-    CAPTURES
+    SETTINGS
 }
 
 private data class PoiCategoryOption(

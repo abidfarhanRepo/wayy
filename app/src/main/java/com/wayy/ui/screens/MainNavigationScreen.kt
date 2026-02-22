@@ -41,7 +41,6 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Navigation
-import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -80,17 +79,9 @@ import com.wayy.data.settings.MapSettings
 import com.wayy.data.settings.MapSettingsRepository
 import com.wayy.data.settings.MlSettings
 import com.wayy.data.settings.MlSettingsRepository
-import com.wayy.data.settings.NavigationSettings
-import com.wayy.data.settings.NavigationSettingsRepository
 import com.wayy.data.sensor.LocationManager
 import com.wayy.data.sensor.DeviceOrientationManager
 import com.wayy.data.repository.LocalPoiItem
-import com.wayy.capture.CaptureEvent
-import com.wayy.capture.CaptureSessionInfo
-import com.wayy.capture.CaptureState
-import com.wayy.capture.CaptureError
-import com.wayy.capture.StorageStatus
-import com.wayy.capture.NavigationCaptureController
 import com.wayy.debug.DiagnosticLogger
 import com.wayy.map.MapLibreManager
 import com.wayy.map.MapViewAutoLifecycle
@@ -102,6 +93,7 @@ import com.wayy.ui.components.camera.CameraPreviewCard
 import com.wayy.ui.components.camera.CameraPreviewSurface
 import com.wayy.ui.components.camera.HiddenCameraForML
 import com.wayy.ui.components.common.QuickActionsBar
+import com.wayy.ui.components.common.RoadQualityCard
 import com.wayy.ui.components.common.TopBar
 import com.wayy.ui.components.glass.GlassIconButton
 import com.wayy.ui.components.gauges.SpeedometerSmall
@@ -142,8 +134,7 @@ private const val MPS_TO_KMH = 3.6f
 fun MainNavigationScreen(
     viewModel: NavigationViewModel = viewModel(),
     onMenuClick: () -> Unit = {},
-    onSettingsClick: () -> Unit = {},
-    onSearchClick: () -> Unit = {}
+    onSettingsClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
@@ -154,14 +145,11 @@ fun MainNavigationScreen(
     val wazeStyleManager = remember { WazeStyleManager() }
     val locationManager = remember { LocationManager(context) }
     val orientationManager = remember { DeviceOrientationManager(context) }
-    val captureController = remember { NavigationCaptureController(context) }
     val offlineMapManager = remember { OfflineMapManager(context) }
     val mapSettingsRepository = remember { MapSettingsRepository(context) }
     val mapSettings by mapSettingsRepository.settingsFlow.collectAsState(initial = MapSettings())
     val mlSettingsRepository = remember { MlSettingsRepository(context) }
     val mlSettings by mlSettingsRepository.settingsFlow.collectAsState(initial = MlSettings())
-    val navigationSettingsRepository = remember { NavigationSettingsRepository(context) }
-    val navigationSettings by navigationSettingsRepository.settingsFlow.collectAsState(initial = NavigationSettings())
     val mlManager = remember { viewModel.getMlManager() }
     val laneManager = remember { LaneSegmentationManager(context) }
     val detectionTracker = remember { DetectionTracker() }
@@ -188,12 +176,7 @@ fun MainNavigationScreen(
             )
         }
     }
-    var videoCapture by remember { mutableStateOf<androidx.camera.video.VideoCapture<androidx.camera.video.Recorder>?>(null) }
     var offlineRequested by remember { mutableStateOf(false) }
-    var captureStartMs by remember { mutableStateOf<Long?>(null) }
-    var captureElapsedMs by remember { mutableStateOf(0L) }
-    var captureStorageStatus by remember { mutableStateOf<StorageStatus?>(null) }
-    var captureError by remember { mutableStateOf<String?>(null) }
     var isNorthUp by remember { mutableStateOf(false) }  // Toggle for map rotation mode
     val localPois = viewModel.localPois?.collectAsState()?.value.orEmpty()
     val trafficReports = viewModel.trafficReports?.collectAsState()?.value.orEmpty()
@@ -306,12 +289,6 @@ fun MainNavigationScreen(
             Log.e("WayyMap", "Failed to configure map style", e)
             snackbarHostState.showSnackbar("Map initialization failed")
         }
-    }
-
-    // Apply navigation settings (GPS smoothing, map matching)
-    LaunchedEffect(navigationSettings) {
-        locationManager.setKalmanFilterEnabled(navigationSettings.gpsSmoothingEnabled)
-        locationManager.setMapMatchingEnabled(navigationSettings.mapMatchingEnabled)
     }
 
     var hasLocationPermission by remember {
@@ -459,68 +436,10 @@ fun MainNavigationScreen(
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            captureController.stop(
-                CaptureSessionInfo(
-                    timestamp = System.currentTimeMillis(),
-                    data = mapOf("reason" to "composable_disposed")
-                )
-            )
-        }
-    }
-
-    val shouldCapture = uiState.isCaptureEnabled && hasCameraPermission
-    LaunchedEffect(shouldCapture, videoCapture, uiState.currentRoute) {
-        val capture = videoCapture
-        if (shouldCapture && capture != null) {
-            if (captureStartMs == null) {
-                captureStartMs = System.currentTimeMillis()
-            }
-            captureController.startIfNeeded(
-                capture,
-                CaptureSessionInfo(
-                    timestamp = System.currentTimeMillis(),
-                    data = mapOf(
-                        "routeDistance" to uiState.currentRoute?.distance,
-                        "routeDuration" to uiState.currentRoute?.duration
-                    )
-                )
-            )
-        } else if (!shouldCapture) {
-            captureController.stop(
-                CaptureSessionInfo(
-                    timestamp = System.currentTimeMillis(),
-                    data = mapOf("reason" to "capture_disabled_or_stopped")
-                )
-            )
-            captureStartMs = null
-        } else if (capture == null) {
-        }
-    }
-
-    LaunchedEffect(captureStartMs) {
-        val start = captureStartMs
-        if (start == null) {
-            captureElapsedMs = 0L
-            return@LaunchedEffect
-        }
-        try {
-            while (true) {
-                captureElapsedMs = System.currentTimeMillis() - start
-                captureStorageStatus = captureController.getStorageStatus()
-                captureError = captureController.errorFlow.value?.message ?: ""
-                delay(1000)
-            }
-        } catch (e: Exception) {
-            Log.e("WayyCapture", "Capture timer error", e)
-        }
-    }
-
     androidx.compose.foundation.layout.Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(WayyColors.Background)
+            .background(WayyColors.BgPrimary)
     ) {
         MapViewAutoLifecycle(
             manager = mapManager,
@@ -596,9 +515,6 @@ fun MainNavigationScreen(
             }
         }
 
-        // Traffic segments removed - they were cluttering the map
-        // To re-enable traffic visualization, uncomment the code below:
-        /*
         LaunchedEffect(trafficSegments, uiState.isNavigating) {
             try {
                 mapManager.getMapLibreMap()?.style?.getSourceAs<GeoJsonSource>(
@@ -627,7 +543,6 @@ fun MainNavigationScreen(
                 Log.e("WayyMap", "Failed to update traffic segments", e)
             }
         }
-        */
 
         LaunchedEffect(uiState.isNavigating, uiState.currentRoute) {
             try {
@@ -694,17 +609,16 @@ fun MainNavigationScreen(
             }
         }
 
-        TopBar(
-            onMenuClick = onMenuClick,
-            onSettingsClick = onSettingsClick,
-            isScanningActive = uiState.isScanning,
-            gpsAccuracyMeters = uiState.currentAccuracyMeters,
-            showSettings = false,
-            isNavigating = uiState.isNavigating,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-        )
+        if (!uiState.isNavigating) {
+            TopBar(
+                onMenuClick = onMenuClick,
+                onSettingsClick = onSettingsClick,
+                isScanningActive = uiState.isScanning,
+                gpsAccuracyMeters = uiState.currentAccuracyMeters,
+                showSettings = false,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+        }
 
         // North-up map rotation toggle button
         if (uiState.isNavigating) {
@@ -717,18 +631,6 @@ fun MainNavigationScreen(
                     .statusBarsPadding()
                     .padding(top = 12.dp, end = 16.dp)
                     .size(48.dp)
-            )
-        }
-
-
-        if (captureStartMs != null) {
-            CaptureTimerHud(
-                elapsedMs = captureElapsedMs,
-                storageStatus = captureStorageStatus,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .statusBarsPadding()
-                    .padding(top = 12.dp, start = 16.dp)
             )
         }
 
@@ -746,7 +648,7 @@ fun MainNavigationScreen(
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 90.dp),
-                colors = CardDefaults.cardColors(containerColor = WayyColors.Surface)
+                colors = CardDefaults.cardColors(containerColor = WayyColors.BgSecondary)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -774,11 +676,11 @@ fun MainNavigationScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = poiCategoryLabel(poi.category),
-                        color = WayyColors.PrimaryMuted
+                        color = WayyColors.TextSecondary
                     )
                     Text(
                         text = "Distance: $distanceText",
-                        color = WayyColors.PrimaryMuted
+                        color = WayyColors.TextSecondary
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
@@ -803,7 +705,7 @@ fun MainNavigationScreen(
                 title = { Text(text = "Report traffic", color = Color.White) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(text = "Select severity", color = WayyColors.PrimaryMuted)
+                        Text(text = "Select severity", color = WayyColors.TextSecondary)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("light", "moderate", "heavy").forEach { level ->
                                 Button(
@@ -819,9 +721,9 @@ fun MainNavigationScreen(
                     }
                 },
                 confirmButton = {},
-                containerColor = WayyColors.Surface,
+                containerColor = WayyColors.BgSecondary,
                 titleContentColor = Color.White,
-                textContentColor = WayyColors.PrimaryMuted
+                textContentColor = WayyColors.TextSecondary
             )
         }
 
@@ -847,9 +749,9 @@ fun MainNavigationScreen(
                                     onClick = { addPoiCategory = category },
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = if (addPoiCategory == category) {
-                                            WayyColors.Accent
+                                            WayyColors.PrimaryLime
                                         } else {
-                                            WayyColors.SurfaceVariant
+                                            WayyColors.BgTertiary
                                         }
                                     )
                                 ) {
@@ -889,9 +791,9 @@ fun MainNavigationScreen(
                         Text("Cancel")
                     }
                 },
-                containerColor = WayyColors.Surface,
+                containerColor = WayyColors.BgSecondary,
                 titleContentColor = Color.White,
-                textContentColor = WayyColors.PrimaryMuted
+                textContentColor = WayyColors.TextSecondary
             )
         }
 
@@ -906,7 +808,7 @@ fun MainNavigationScreen(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()
-                .padding(top = 70.dp)
+                .padding(top = 6.dp)
         ) {
             val currentStreet = uiState.currentStreet.ifBlank { "Unknown" }
             val reportCount = trafficReports.count { report ->
@@ -979,25 +881,17 @@ fun MainNavigationScreen(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .navigationBarsPadding()
-                .padding(start = 16.dp, bottom = 100.dp)
+                .padding(start = 16.dp, bottom = 88.dp)
         )
 
         QuickActionsBar(
             isNavigating = uiState.isNavigating,
-            isRecording = captureStartMs != null,
-            onSearchClick = onSearchClick,
+            onMenuClick = onMenuClick,
             onNavigateToggle = { viewModel.toggleNavigation() },
-            onRecordToggle = {
-                if (captureStartMs == null) {
-                    captureStartMs = System.currentTimeMillis()
-                } else {
-                    captureStartMs = null
-                }
-            },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth()
                 .navigationBarsPadding()
+                .padding(bottom = 16.dp)
         )
 
         // Traffic report button (only when not navigating)
@@ -1035,7 +929,7 @@ private fun TrafficHistoryChart(bars: List<Double>) {
                     .width(8.dp)
                     .height((48 * heightRatio).dp)
                     .background(
-                        color = WayyColors.Accent.copy(alpha = 0.85f),
+                        color = WayyColors.PrimaryCyan.copy(alpha = 0.85f),
                         shape = RoundedCornerShape(4.dp)
                 )
             )
@@ -1063,80 +957,6 @@ private fun buildTrafficHistoryBars(
     return buckets
 }
 
-@Composable
-private fun CaptureTimerHud(
-    elapsedMs: Long,
-    storageStatus: StorageStatus? = null,
-    modifier: Modifier = Modifier
-) {
-    val totalSeconds = (elapsedMs / 1000).coerceAtLeast(0)
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    val label = String.format(Locale.US, "REC %02d:%02d", minutes, seconds)
-    
-    val storageLabel = storageStatus?.let { status ->
-        val availableMb = status.availableBytes / (1024 * 1024)
-        when {
-            status.isCriticalStorage -> "CRIT ${availableMb}MB"
-            status.isLowStorage -> "LOW ${availableMb}MB"
-            else -> null
-        }
-    }
-    
-    val indicatorColor = when {
-        storageStatus?.isCriticalStorage == true -> WayyColors.Error
-        storageStatus?.isLowStorage == true -> WayyColors.Warning
-        else -> WayyColors.Error
-    }
-    
-    GlassCardElevated(modifier = modifier) {
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val transition = rememberInfiniteTransition(label = "recPulse")
-                val pulseAlpha by transition.animateFloat(
-                    initialValue = 0.5f,
-                    targetValue = 1f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(700),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "recPulseAlpha"
-                )
-                Spacer(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .background(
-                            color = indicatorColor.copy(alpha = pulseAlpha),
-                            RoundedCornerShape(4.dp)
-                        )
-                )
-                Text(
-                    text = label,
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            if (storageLabel != null) {
-                Text(
-                    text = storageLabel,
-                    color = WayyColors.Error,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-        }
-    }
-}
-
-
-
-
-
 private fun poiCategoryLabel(category: String): String {
     return when (category.trim().lowercase()) {
         "gas" -> "Gas"
@@ -1156,11 +976,11 @@ private fun poiCategoryIcon(category: String) = when (category.trim().lowercase(
 }
 
 private fun poiCategoryColor(category: String) = when (category.trim().lowercase()) {
-    "gas" -> WayyColors.Warning
-    "food" -> WayyColors.Accent
-    "parking" -> WayyColors.AccentLight
-    "lodging" -> WayyColors.Accent
-    else -> WayyColors.PrimaryMuted
+    "gas" -> WayyColors.PrimaryOrange
+    "food" -> WayyColors.PrimaryLime
+    "parking" -> WayyColors.PrimaryCyan
+    "lodging" -> WayyColors.PrimaryPurple
+    else -> WayyColors.Info
 }
 
 

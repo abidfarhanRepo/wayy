@@ -39,10 +39,10 @@ fun LaneGuidanceView(
 
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(WayyColors.Surface)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .clip(RoundedCornerShape(12.dp))
+            .background(WayyColors.BgSecondary.copy(alpha = 0.9f))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         lanes.forEach { lane ->
@@ -59,15 +59,16 @@ private fun LaneIndicator(
     directions: List<LaneDirection>,
     isActive: Boolean
 ) {
-    val bgColor = if (isActive) WayyColors.Accent else WayyColors.SurfaceVariant
-    val iconColor = if (isActive) Color.White else WayyColors.PrimaryMuted
+    val bgColor = if (isActive) WayyColors.PrimaryLime else WayyColors.BgTertiary
+    val iconColor = if (isActive) WayyColors.BgPrimary else WayyColors.TextSecondary
+    val alpha = if (isActive) 1f else 0.5f
 
     Box(
         modifier = Modifier
-            .size(width = 28.dp, height = 36.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(bgColor)
-            .padding(2.dp),
+            .size(width = 36.dp, height = 48.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(bgColor.copy(alpha = alpha))
+            .padding(4.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -105,7 +106,7 @@ private fun LaneArrow(
         contentDescription = null,
         tint = color,
         modifier = Modifier
-            .size(if (isActive) 14.dp else 12.dp)
+            .size(if (isActive) 16.dp else 14.dp)
             .alpha(if (isActive) 1f else 0.6f)
             .then(
                 if (direction != LaneDirection.STRAIGHT) {
@@ -126,22 +127,22 @@ fun LaneGuidanceCompact(
 
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(WayyColors.Surface)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
+            .clip(RoundedCornerShape(8.dp))
+            .background(WayyColors.BgSecondary.copy(alpha = 0.85f))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         repeat(totalLanes) { index ->
             Box(
                 modifier = Modifier
-                    .size(width = 6.dp, height = 18.dp)
+                    .size(width = 8.dp, height = 24.dp)
                     .clip(RoundedCornerShape(2.dp))
                     .background(
                         if (lanes.getOrNull(index)?.isActive == true)
-                            WayyColors.Accent
+                            WayyColors.PrimaryLime
                         else
-                            WayyColors.SurfaceVariant
+                            WayyColors.BgTertiary.copy(alpha = 0.5f)
                     )
             )
         }
